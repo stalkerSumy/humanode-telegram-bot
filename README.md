@@ -20,7 +20,14 @@ curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/ma
 The installer will ask for your Telegram Bot Token, authorized User ID, and server details.
 
 
----
+ Uninstallation
+
+ To completely remove the bot and its service from your system, run the following command:
+ 
+```
+  /bin/bash -c "$(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh)"
+```
+
 
 ### Support & Donations
 
