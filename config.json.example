@@ -1,0 +1,21 @@
+{
+  "telegram_bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "authorized_user_id": 123456789,
+  "default_language": "en",
+  "servers": {
+    "local_node": {
+      "name": "Local Node",
+      "ip": "127.0.0.1",
+      "user": "root",
+      "key_path": null,
+      "is_local": true
+    },
+    "remote_node_1": {
+      "name": "My Remote Server (1.2.3.4)",
+      "ip": "1.2.3.4",
+      "user": "root",
+      "key_path": "/home/user/.ssh/id_rsa",
+      "is_local": false
+    }
+  }
+}

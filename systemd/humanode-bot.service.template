@@ -1,0 +1,14 @@
+[Unit]
+Description=Humanode Telegram Bot
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=__WORKING_DIR__
+ExecStart=__VENV_PATH__/bin/python3 bot/humanode_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
