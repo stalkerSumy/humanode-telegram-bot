@@ -1,159 +1,143 @@
 #!/bin/bash
 
-# Кольори для виводу
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
+# Exit immediately if a command exits with a non-zero status.
+set -e
 
-# --- Функція для виводу ---
-info() {
-    echo -e "${GREEN}[INFO] $1${NC}"
-}
+REPO_DIR="/root/humanode-bot-dist"
+INSTALL_DIR="/opt/humanode-bot"
+VENV_DIR="${INSTALL_DIR}/venv"
+CONFIG_FILE="${INSTALL_DIR}/config.json"
+LOG_FILE="${INSTALL_DIR}/humanode_bot.log"
 
-warn() {
-    echo -e "${YELLOW}[WARN] $1${NC}"
-}
+echo "Starting Humanode Telegram Bot installation..."
 
-error() {
-    echo -e "${RED}[ERROR] $1${NC}"
-}
+# 1. Create installation directory
+echo "Creating installation directory: ${INSTALL_DIR}"
+sudo mkdir -p "${INSTALL_DIR}"
+sudo chown -R $(whoami):$(whoami) "${INSTALL_DIR}"
 
-# --- Початок скрипта ---
-info "Welcome to the Humanode Bot Installer!"
-info "This script will guide you through the setup process."
-echo
+# 2. Copy bot files
+echo "Copying bot files to ${INSTALL_DIR}..."
+cp -r "${REPO_DIR}/bot" "${INSTALL_DIR}/"
+cp "${REPO_DIR}/requirements.txt" "${INSTALL_DIR}/"
+cp "${REPO_DIR}/config.json.example" "${INSTALL_DIR}/"
+cp -r "${REPO_DIR}/systemd" "${INSTALL_DIR}/"
+cp "${REPO_DIR}/README.md" "${INSTALL_DIR}/"
+cp "${REPO_DIR}/install.sh" "${INSTALL_DIR}/" # Copy itself for future updates
 
-# --- 1. Перевірка залежностей ---
-info "Step 1: Checking dependencies..."
-command -v python3 >/dev/null 2>&1 || { error "Python 3 is not installed. Please install it and run this script again."; exit 1; }
-command -v pip >/dev/null 2>&1 || { error "pip is not installed. Please install it and run this script again."; exit 1; }
-info "All dependencies are present."
-echo
+# 3. Create and activate virtual environment
+echo "Creating Python virtual environment at ${VENV_DIR}..."
+python3 -m venv "${VENV_DIR}"
+source "${VENV_DIR}/bin/activate"
 
-# --- 2. Збір даних для конфігурації ---
-info "Step 2: Configuring the bot. Please answer the following questions."
+# 4. Install Python dependencies
+echo "Installing Python dependencies..."
+pip install -r "${INSTALL_DIR}/requirements.txt"
 
-read -p "Enter your Telegram Bot Token: " TELEGRAM_BOT_TOKEN
-read -p "Enter your authorized Telegram User ID: " AUTHORIZED_USER_ID
-read -p "Enter default language (uk/en) [en]: " DEFAULT_LANGUAGE
-DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-en}
-
-# --- Створення JSON ---
-CONFIG_JSON="{\n"
-CONFIG_JSON+="  \"telegram_bot_token\": \"$TELEGRAM_BOT_TOKEN\",\n"
-CONFIG_JSON+="  \"authorized_user_id\": $AUTHORIZED_USER_ID,\n"
-CONFIG_JSON+="  \"default_language\": \"$DEFAULT_LANGUAGE\",\n"
-CONFIG_JSON+="  \"servers\": {\n"
-
-# --- 3. Налаштування серверів ---
-server_list=""
-read -p "Is a Humanode node running on this same machine? (y/n) [y]: " IS_LOCAL_NODE
-IS_LOCAL_NODE=${IS_LOCAL_NODE:-y}
-
-if [[ "$IS_LOCAL_NODE" == "y" ]]; then
-    info "Configuring local node..."
-    read -p "Enter the username that runs the node commands (e.g., root): " LOCAL_USER
-    
-    server_list+="    \"local_node\": {\n"
-    server_list+="      \"name\": \"Local Node\",\n"
-    server_list+="      \"ip\": \"127.0.0.1\",\n"
-    server_list+="      \"user\": \"$LOCAL_USER\",\n"
-    server_list+="      \"key_path\": null,\n"
-    server_list+="      \"is_local\": true\n"
-    server_list+="    }"
+# 5. Check for config.json, if not exists, create from example
+if [ ! -f "${CONFIG_FILE}" ]; then
+    echo "config.json not found. Creating from config.json.example."
+    cp "${INSTALL_DIR}/config.json.example" "${CONFIG_FILE}"
+    echo "Please edit ${CONFIG_FILE} with your Telegram bot token, authorized user ID, and server configurations."
+    echo "You can find the example configuration in ${INSTALL_DIR}/config.json.example."
+    echo "Exiting installation. Please configure config.json and run install.sh again."
+    exit 1
 fi
 
-while true; do
-    read -p "Do you want to add a remote server to manage? (y/n) [n]: " ADD_REMOTE
-    ADD_REMOTE=${ADD_REMOTE:-n}
-    if [[ "$ADD_REMOTE" != "y" ]]; then
-        break
+# Load config.json to get server details for service file generation
+echo "Loading configuration from ${CONFIG_FILE}..."
+TELEGRAM_BOT_TOKEN=$(jq -r '.telegram_bot_token' "${CONFIG_FILE}")
+AUTHORIZED_USER_ID=$(jq -r '.authorized_user_id' "${CONFIG_FILE}")
+DEFAULT_LANGUAGE=$(jq -r '.default_language' "${CONFIG_FILE}")
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null
+then
+    echo "jq is not installed. Please install it: sudo apt-get install jq"
+    exit 1
+fi
+
+# 6. Generate systemd service files from templates
+echo "Generating systemd service files..."
+
+# Bot service
+BOT_SERVICE_TEMPLATE="${INSTALL_DIR}/systemd/humanode-bot.service.template"
+BOT_SERVICE_FILE="/etc/systemd/system/humanode-bot.service"
+sudo cp "${BOT_SERVICE_TEMPLATE}" "${BOT_SERVICE_FILE}"
+sudo sed -i "s|__WORKING_DIR__|${INSTALL_DIR}/bot|g" "${BOT_SERVICE_FILE}"
+sudo sed -i "s|__VENV_PATH__|${VENV_DIR}|g" "${BOT_SERVICE_FILE}"
+echo "Generated ${BOT_SERVICE_FILE}"
+
+# Node and Tunnel services (iterate through servers in config.json)
+# This part assumes that humanode-peer.service.template and humanode-websocket-tunnel.service.template
+# will be used to generate service files for each server defined in config.json.
+# For simplicity, I'll generate for a generic "humanode-peer" and "humanode-websocket-tunnel"
+# service, assuming they are managed globally or that the user will adapt this.
+# A more robust solution would generate per-server service files if needed.
+
+# Get the first server ID from config.json
+FIRST_SERVER_ID=$(jq -r '.servers | keys[0]' "${CONFIG_FILE}")
+if [ -z "$FIRST_SERVER_ID" ] || [ "$FIRST_SERVER_ID" == "null" ]; then
+    echo "No servers found in config.json. Skipping node and tunnel service generation."
+else
+    echo "Using configuration from server: ${FIRST_SERVER_ID} for generic service templates."
+    HUMANODE_HOME=$(jq -r ".servers.${FIRST_SERVER_ID}.humanode_home" "${CONFIG_FILE}")
+    HUMANODE_BINARY_PATH=$(jq -r ".servers.${FIRST_SERVER_ID}.humanode_binary_path" "${CONFIG_FILE}")
+    HUMANODE_DATA_PATH=$(jq -r ".servers.${FIRST_SERVER_ID}.humanode_data_path" "${CONFIG_FILE}")
+    CHAINSPEC_PATH=$(jq -r ".servers.${FIRST_SERVER_ID}.chainspec_path" "${CONFIG_FILE}")
+    HUMANODE_TUNNEL_BINARY_PATH=$(jq -r ".servers.${FIRST_SERVER_ID}.humanode_tunnel_binary_path" "${CONFIG_FILE}")
+    NODE_NAME=$(jq -r ".servers.${FIRST_SERVER_ID}.name" "${CONFIG_FILE}" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]') # Sanitize name for service file
+
+    # Humanode Peer service
+    PEER_SERVICE_TEMPLATE="${INSTALL_DIR}/systemd/humanode-peer.service.template"
+    PEER_SERVICE_FILE="/etc/systemd/system/humanode-peer.service" # Generic name
+    if [ -f "${PEER_SERVICE_TEMPLATE}" ]; then
+        sudo cp "${PEER_SERVICE_TEMPLATE}" "${PEER_SERVICE_FILE}"
+        sudo sed -i "s|__HUMANODE_HOME__|${HUMANODE_HOME}|g" "${PEER_SERVICE_FILE}"
+        sudo sed -i "s|__HUMANODE_BINARY_PATH__|${HUMANODE_BINARY_PATH}|g" "${PEER_SERVICE_FILE}"
+        sudo sed -i "s|__HUMANODE_DATA_PATH__|${HUMANODE_DATA_PATH}|g" "${PEER_SERVICE_FILE}"
+        sudo sed -i "s|__NODE_NAME__|${NODE_NAME}|g" "${PEER_SERVICE_FILE}"
+        sudo sed -i "s|__CHAINSPEC_PATH__|${CHAINSPEC_PATH}|g" "${PEER_SERVICE_FILE}"
+        echo "Generated ${PEER_SERVICE_FILE}"
+    else
+        echo "Warning: humanode-peer.service.template not found. Skipping peer service generation."
     fi
-    
-    if [ -n "$server_list" ]; then
-        server_list+=",\n"
+
+    # Humanode WebSocket Tunnel service
+    TUNNEL_SERVICE_TEMPLATE="${INSTALL_DIR}/systemd/humanode-websocket-tunnel.service.template"
+    TUNNEL_SERVICE_FILE="/etc/systemd/system/humanode-websocket-tunnel.service" # Generic name
+    if [ -f "${TUNNEL_SERVICE_TEMPLATE}" ]; then
+        sudo cp "${TUNNEL_SERVICE_TEMPLATE}" "${TUNNEL_SERVICE_FILE}"
+        sudo sed -i "s|__HUMANODE_HOME__|${HUMANODE_HOME}|g" "${TUNNEL_SERVICE_FILE}"
+        sudo sed -i "s|__HUMANODE_TUNNEL_BINARY_PATH__|${HUMANODE_TUNNEL_BINARY_PATH}|g" "${TUNNEL_SERVICE_FILE}"
+        echo "Generated ${TUNNEL_SERVICE_FILE}"
+    else
+        echo "Warning: humanode-websocket-tunnel.service.template not found. Skipping tunnel service generation."
     fi
-
-    info "Configuring a new remote server..."
-    read -p "Enter a unique ID for the server (e.g., my_vps): " SERVER_ID
-    read -p "Enter a display name for the server (e.g., My Awesome VPS): " SERVER_NAME
-    read -p "Enter the server's IP address: " SERVER_IP
-    read -p "Enter the SSH username (e.g., root): " SERVER_USER
-    read -p "Enter the absolute path to the SSH private key (e.g., /root/.ssh/id_rsa): " SERVER_KEY_PATH
-    
-    server_list+="    \"$SERVER_ID\": {\n"
-    server_list+="      \"name\": \"$SERVER_NAME\",\n"
-    server_list+="      \"ip\": \"$SERVER_IP\",\n"
-    server_list+="      \"user\": \"$SERVER_USER\",\n"
-    server_list+="      \"key_path\": \"$SERVER_KEY_PATH\",\n"
-    server_list+="      \"is_local\": false\n"
-    server_list+="    }"
-done
-
-CONFIG_JSON+="$server_list\n"
-CONFIG_JSON+="  }\n"
-CONFIG_JSON+="}\n"
-
-# Запис конфігурації у файл
-echo -e "$CONFIG_JSON" > config.json
-info "Configuration file 'config.json' created successfully."
-echo
-
-# --- 4. Налаштування Python середовища ---
-info "Step 3: Setting up Python virtual environment..."
-python3 -m venv venv
-if [ $? -ne 0 ]; then
-    error "Failed to create Python virtual environment."
-    exit 1
 fi
 
-source venv/bin/activate
-pip install -r requirements.txt
-if [ $? -ne 0 ]; then
-    error "Failed to install Python dependencies."
-    exit 1
-fi
-deactivate
-info "Python environment is ready."
-echo
-
-# --- 5. Налаштування Systemd сервісу ---
-info "Step 4: Setting up systemd service..."
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-VENV_PYTHON_PATH="$SCRIPT_DIR/venv/bin/python3"
-SERVICE_FILE_PATH="/etc/systemd/system/humanode-bot.service"
-
-# Створення конфігурації сервісу з шаблону
-SERVICE_CONFIG=$(cat systemd/humanode-bot.service.template)
-SERVICE_CONFIG=${SERVICE_CONFIG//__WORKING_DIR__/$SCRIPT_DIR}
-SERVICE_CONFIG=${SERVICE_CONFIG//__VENV_PATH__/$VENV_PYTHON_PATH}
-
-echo "The script needs sudo access to install the systemd service."
-echo -e "$SERVICE_CONFIG" | sudo tee $SERVICE_FILE_PATH > /dev/null
-if [ $? -ne 0 ]; then
-    error "Failed to write systemd service file. Please run this script with a user that has sudo privileges."
-    exit 1
-fi
-
-info "Reloading systemd daemon..."
+# 7. Reload systemd, enable and start services
+echo "Reloading systemd daemon..."
 sudo systemctl daemon-reload
 
-info "Enabling and starting the bot service..."
+echo "Enabling and starting humanode-bot.service..."
 sudo systemctl enable humanode-bot.service
 sudo systemctl start humanode-bot.service
 
-# --- Завершення ---
-echo
-info "-------------------------------------------------"
-info "Installation complete!"
-info "The bot is now running as a background service."
-echo
-info "You can check the bot's status with:"
-warn "sudo systemctl status humanode-bot.service"
-echo
-info "You can view the logs with:"
-warn "sudo journalctl -u humanode-bot.service -f"
-info "-------------------------------------------------"
+# Enable and start node/tunnel services if they were generated
+if [ -f "/etc/systemd/system/humanode-peer.service" ]; then
+    echo "Enabling and starting humanode-peer.service..."
+    sudo systemctl enable humanode-peer.service
+    sudo systemctl start humanode-peer.service
+fi
 
-exit 0
+if [ -f "/etc/systemd/system/humanode-websocket-tunnel.service" ]; then
+    echo "Enabling and starting humanode-websocket-tunnel.service..."
+    sudo systemctl enable humanode-websocket-tunnel.service
+    sudo systemctl start humanode-websocket-tunnel.service
+fi
+
+echo "Installation complete. Check bot status with: sudo systemctl status humanode-bot.service"
+echo "Check node status with: sudo systemctl status humanode-peer.service"
+echo "Check tunnel status with: sudo systemctl status humanode-websocket-tunnel.service"
+echo "Bot logs: ${LOG_FILE}"

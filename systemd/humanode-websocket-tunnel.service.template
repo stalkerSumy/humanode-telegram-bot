@@ -1,0 +1,15 @@
+[Unit]
+Description=Humanode WebSocket Tunnel
+After=network.target
+Requires=humanode-peer.service
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=__HUMANODE_HOME__
+ExecStart=__HUMANODE_TUNNEL_BINARY_PATH__
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

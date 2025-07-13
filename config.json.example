@@ -8,14 +8,28 @@
       "ip": "127.0.0.1",
       "user": "root",
       "key_path": null,
-      "is_local": true
+      "is_local": true,
+      "humanode_home": "/root/.humanode",
+      "humanode_binary_path": "/root/.humanode/workspaces/default/humanode-peer",
+      "humanode_data_path": "/root/.humanode/workspaces/default/substrate-data",
+      "chainspec_path": "/root/.humanode/workspaces/default/chainspec.json",
+      "humanode_tunnel_binary_path": "/root/.humanode/workspaces/default/humanode-websocket-tunnel-client",
+      "local_backup_dir": "/root/humanode_backups",
+      "mega_backup_dir": "/Root/humanode_backups/"
     },
     "remote_node_1": {
       "name": "My Remote Server (1.2.3.4)",
       "ip": "1.2.3.4",
       "user": "root",
       "key_path": "/home/user/.ssh/id_rsa",
-      "is_local": false
+      "is_local": false,
+      "humanode_home": "/root/.humanode",
+      "humanode_binary_path": "/root/.humanode/workspaces/default/humanode-peer",
+      "humanode_data_path": "/root/.humanode/workspaces/default/substrate-data",
+      "chainspec_path": "/root/.humanode/workspaces/default/chainspec.json",
+      "humanode_tunnel_binary_path": "/root/.humanode/workspaces/default/humanode-websocket-tunnel-client",
+      "local_backup_dir": "/root/humanode_backups",
+      "mega_backup_dir": "/Root/humanode_backups/"
     }
   }
 }

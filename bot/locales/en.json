@@ -33,5 +33,6 @@
     "error_creating_archive": "❌ Error creating archive:\n<pre>{error}</pre>",
     "error_uploading": "❌ Error uploading to Mega.nz:\n<pre>{error}</pre>",
     "error_starting_node": "❌ Node failed to start after backup:\n<pre>{error}</pre>",
-    "mega_cmd_not_found": "❌ `mega-cmd` is not installed on {server_name}. This operation is not possible."
+    "mega_cmd_not_found": "❌ `mega-cmd` is not installed on {server_name}. This operation is not possible.",
+    "bioauth_notification": "⚠️ Bio-authentication required soon on server *{server_name}*!\nTime remaining: *{time}"*
 }
