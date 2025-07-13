@@ -3,7 +3,8 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-REPO_DIR="/root/humanode-bot-dist"
+# Determine the directory where the script is located
+REPO_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 INSTALL_DIR="/opt/humanode-bot"
 VENV_DIR="${INSTALL_DIR}/venv"
 CONFIG_FILE="${INSTALL_DIR}/config.json"

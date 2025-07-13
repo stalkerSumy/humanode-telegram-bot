@@ -805,6 +805,12 @@ async def handle_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.edit_message_text(f"{i18n.get('checking_bioauth_timer', server_name=server_name)}")
         screenshot_path = None
         try:
+            # Перевіряємо та перезапускаємо тунель, якщо потрібно
+            tunnel_ok = await check_and_restart_tunnel_service(server_config, query)
+            if not tunnel_ok:
+                await query.edit_message_text(f"❌ {i18n.get('tunnel_not_working_link_impossible', server_name=server_name)}")
+                return
+
             url = get_latest_url_from_logs(server_config)
             if not url:
                 await query.edit_message_text(f"{i18n.get('no_humanode_link_found_bioauth', server_name=server_name)}")
