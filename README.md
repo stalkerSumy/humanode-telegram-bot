@@ -30,7 +30,14 @@ After installation, the bot will be running as a `systemd` service.
 
 Open Telegram, find your bot, and send the `/start` command to begin.
 
----
+ Uninstallation
+
+ To completely remove the bot and its service from your system, run the following command:
+ 
+```
+  /bin/bash -c "$(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh)"
+```
+
 
 ## ❤️ Support the Project
 
