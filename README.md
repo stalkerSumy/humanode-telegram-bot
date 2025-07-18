@@ -19,8 +19,6 @@ To install the bot, run the following command on your server and follow the on-s
 bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-bot-dist/main/install.sh)
 ```
 
-**Note:** You must replace `YOUR_USERNAME` with your actual GitHub username where you forked or created this repository.
-
 ## Usage
 
 After installation, the bot will be running as a `systemd` service.
