@@ -4,27 +4,37 @@ A Telegram bot to manage and monitor your Humanode nodes.
 
 ## Features
 
-- Get bio-authentication links
-- Check node version and status
-- Start, stop, restart nodes via systemd
-- Create and restore database backups from Mega.nz with real-time progress
-- Proactive notifications for upcoming bio-authentications.
+- Interactive installation
+- Multi-language support (English/Ukrainian)
+- Manage multiple servers (local and remote via SSH)
+- Get bio-authentication and epoch timers using Selenium
+- Start, stop, restart, and check the status of your node service
+- View node logs directly from Telegram
 
 ## Installation
 
-To install the bot, simply run the installation script and follow the on-screen instructions:
+To install the bot, run the following command on your server and follow the on-screen instructions:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh | bash
+bash <(curl -sSL https://raw.githubusercontent.com/YOUR_USERNAME/humanode-bot-dist/main/install.sh)
 ```
-The installer will ask for your Telegram Bot Token, authorized User ID, and server details.
 
+**Note:** You must replace `YOUR_USERNAME` with your actual GitHub username where you forked or created this repository.
+
+## Usage
+
+After installation, the bot will be running as a `systemd` service.
+
+- To check the bot's status: `sudo systemctl status humanode-bot`
+- To view its logs: `sudo journalctl -u humanode-bot -f`
+
+Open Telegram, find your bot, and send the `/start` command to begin.
 
 ---
 
-### Support & Donations
+## ❤️ Support the Project
 
-If you find this bot useful, please consider supporting its development.
+If you find this bot useful, please consider supporting its development:
 
 - **EVM Networks (ETH, BSC, Polygon, etc.):**
   `0x5A1D23F27bd84dd3Bc02ecCAD3d48bEAFD60dF10`
@@ -33,7 +43,4 @@ If you find this bot useful, please consider supporting its development.
   `hmqxDrZmJzJwNoyCdnGFdmhAVvnH984j8gFJfc2fbQ7Qnjwnq`
 
 ---
-
-### Credits
-
 Powered by **mr.Lee** and **Gemini**

@@ -1,3 +1,5 @@
-python-telegram-bot[ext]
+python-telegram-bot
 selenium
 webdriver-manager
+requests
+jq
