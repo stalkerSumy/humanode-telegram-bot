@@ -6,7 +6,7 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=__HUMANODE_HOME__
-ExecStart=__HUMANODE_BINARY_PATH__ --base-path __HUMANODE_DATA_PATH__ --name __NODE_NAME__ --chain __CHAINSPEC_PATH__ --unsafe-rpc-external --rpc-methods Safe --rpc-cors all --execution Wasm --rpc-url-ngrok-detect --rpc-port 9944 --validator
+ExecStart=__HUMANODE_BINARY_PATH__ --base-path __HUMANODE_DATA_PATH__ --name __NODE_NAME__ --chain __CHAINSPEC_PATH__ --rpc-cors all --execution Wasm --rpc-url-ngrok-detect --validator
 Restart=always
 RestartSec=10
 
