@@ -16,7 +16,10 @@ setup_texts() {
     if [[ "$lang" == "ua" ]]; then
         TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot \n================================================="
         TEXTS[dep_check]="Перевірка необхідних залежностей..."
-        TEXTS[dep_missing]="Відсутні наступні залежності: %s. Будь ласка, встановіть їх (напр., 'sudo apt update && sudo apt install -y %s')."
+        TEXTS[dep_missing]="Відсутні наступні залежності: %s."
+        TEXTS[dep_install_prompt]="Скрипт може спробувати встановити їх автоматично. Продовжити? (y/n): "
+        TEXTS[dep_installing]="Встановлюю відсутні залежності..."
+        TEXTS[dep_manual_install]="Будь ласка, встановіть їх вручну (напр., 'sudo apt update && sudo apt install -y %s')."
         TEXTS[dep_ok]="Усі залежності встановлено."
         TEXTS[install_dir_prompt]="Введіть директорію для встановлення [за замовчуванням: /opt/humanode-bot]: "
         TEXTS[sudo_needed]="Для встановлення в %s потрібні права адміністратора (sudo)."
@@ -47,7 +50,10 @@ setup_texts() {
     else # English
         TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer \n=============================================="
         TEXTS[dep_check]="Checking for required dependencies..."
-        TEXTS[dep_missing]="The following dependencies are missing: %s. Please install them (e.g., 'sudo apt update && sudo apt install -y %s')."
+        TEXTS[dep_missing]="The following dependencies are missing: %s."
+        TEXTS[dep_install_prompt]="The script can attempt to install them automatically. Proceed? (y/n): "
+        TEXTS[dep_installing]="Installing missing dependencies..."
+        TEXTS[dep_manual_install]="Please install them manually (e.g., 'sudo apt update && sudo apt install -y %s')."
         TEXTS[dep_ok]="All dependencies are installed."
         TEXTS[install_dir_prompt]="Enter the installation directory [default: /opt/humanode-bot]: "
         TEXTS[sudo_needed]="Administrator privileges (sudo) are required to install to %s."
@@ -104,9 +110,26 @@ main() {
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
         local missing_str="${missing_deps[*]}"
-        # Use printf for formatted string
-        printf -v msg "${TEXTS[dep_missing]}" "$missing_str" "$missing_str"
-        error "$msg"
+        local msg
+        printf -v msg "${TEXTS[dep_missing]}" "$missing_str"
+        info "$msg"
+
+        # Attempt to auto-install
+        if command -v apt-get &> /dev/null; then
+            read -p "${TEXTS[dep_install_prompt]}" -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                info "${TEXTS[dep_installing]}"
+                sudo apt-get update
+                sudo apt-get install -y "${missing_deps[@]}"
+            else
+                error "Встановлення скасовано користувачем. / Installation cancelled by user."
+            fi
+        else
+            local manual_install_msg
+            printf -v manual_install_msg "${TEXTS[dep_manual_install]}" "$missing_str"
+            error "Не вдалося знайти 'apt-get'. $manual_install_msg / Could not find 'apt-get'. $manual_install_msg"
+        fi
     fi
     success "${TEXTS[dep_ok]}"
 
