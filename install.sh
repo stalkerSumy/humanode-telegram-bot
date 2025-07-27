@@ -147,7 +147,7 @@ main() {
     fi
 
     # 4. Clone or Update Repository
-    local repo_url="https://github.com/YOUR_USERNAME/humanode-bot-dist.git" # <-- IMPORTANT: CHANGE THIS
+    local repo_url="https://github.com/stalkerSumy/humanode-telegram-bot.git"
     if [ -d "$INSTALL_DIR" ]; then
         info "$(printf "${TEXTS[repo_exists]}" "$INSTALL_DIR")"
         cd "$INSTALL_DIR"
