@@ -101,7 +101,7 @@ main() {
     # 2. Pre-flight Checks
     info "${TEXTS[dep_check]}"
     local missing_deps=()
-    local deps=("git" "python3" "python3-venv" "jq" "curl")
+    local deps=("git" "python3" "python3-venv" "jq" "curl" "tesseract-ocr")
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_deps+=("$dep")
