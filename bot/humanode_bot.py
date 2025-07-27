@@ -37,7 +37,7 @@ from PIL import Image
 import io
 
 # --- Constants ---
-BOT_VERSION = "1.3.3" # Incremented version
+BOT_VERSION = "1.3.5" # Incremented version
 TOKEN = "7687787104:AAFccrcsx425HA9reJ-dpAJZIrirx8WIHec"
 AUTHORIZED_USER_ID = DUMMY_USER_ID
 STATE_FILE = "/root/bot_state.json"
@@ -168,7 +168,6 @@ def translated_action(func):
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         lang = get_user_language(context)
-        # Pass lang to the wrapped function
         return await func(update, context, *args, lang=lang, **kwargs)
     return wrapper
 
@@ -421,57 +420,70 @@ async def get_latest_url_from_logs(server_config: dict, query=None, lang: str = 
 
 def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int, int]:
     if not url:
-        logger.warning(f"Skipping Selenium check for empty URL.")
+        logger.warning("Skipping Selenium check for empty URL.")
         return -1, -1
 
     bioauth_seconds = -1
     epoch_minutes = -1
 
     try:
-        wait = WebDriverWait(driver, 45)
+        wait = WebDriverWait(driver, 60) # Increased wait time
         logger.info(f"Selenium: Navigating to URL: {url}")
         driver.get(url)
 
-        wait.until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'css-13cn7tz')]" ))).click()
-        wait.until(EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Dashboard')]" ))).click()
-        timers_container = wait.until(EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'css-ak0d3g')]" )))
+        # Click the accordion to open the dashboard view
+        dashboard_accordion_xpath = "//span[contains(text(), 'Dashboard')]/ancestor::div[contains(@class, 'MuiAccordionSummary-root')]"
+        wait.until(EC.element_to_be_clickable((By.XPATH, dashboard_accordion_xpath))).click()
+
+        # Wait for the container with timers to be visible
+        timers_container_xpath = "//div[contains(@class, 'MuiAccordionDetails-root')]//div[contains(@class, 'css-ak0d3g')]"
+        timers_container = wait.until(EC.visibility_of_element_located((By.XPATH, timers_container_xpath)))
         
-        logger.info("Waiting 5 seconds for data to load...")
-        time.sleep(5)
+        logger.info("Waiting up to 10 seconds for timer data to stabilize...")
+        # Instead of fixed sleep, wait for a specific element that indicates data is loaded.
+        # Here, we wait for the bioauth timer text to be present.
+        wait.until(EC.presence_of_element_located((By.XPATH, f"{timers_container_xpath}//p[text()='Bio-authentication']/following-sibling::h6")))
+
         screenshot_bytes = timers_container.screenshot_as_png
 
         image = Image.open(io.BytesIO(screenshot_bytes))
         ocr_text = pytesseract.image_to_string(image)
         logger.info(f"OCR Result:\n---\n{ocr_text}\n---")
 
-        bioauth_match = re.search(r'(\d{1,3}):(\d{1,2}):(\d{1,2})', ocr_text)
+        # Regex for HHH:MM:SS format
+        bioauth_match = re.search(r'(\d{1,3}):(\d{2}):(\d{2})', ocr_text)
         if bioauth_match:
             h, m, s = map(int, bioauth_match.groups())
             bioauth_seconds = timedelta(hours=h, minutes=m, seconds=s).total_seconds()
+            logger.info(f"Parsed Bio-authentication time: {bioauth_seconds} seconds")
 
+        # Regex for epoch time based on "Total" and "Progress" text
         total_match = re.search(r'Total:\s*(\d+)\s*hr', ocr_text, re.IGNORECASE)
         progress_match = re.search(r'Progress:\s*(\d+)\s*hr[s]?\s*(\d+)\s*min', ocr_text, re.IGNORECASE)
+        
         if total_match and progress_match:
             total_duration = timedelta(hours=int(total_match.group(1)))
             progress_duration = timedelta(hours=int(progress_match.group(1)), minutes=int(progress_match.group(2)))
             remaining_duration = total_duration - progress_duration
             epoch_minutes = int(remaining_duration.total_seconds() / 60)
-            logger.info(f"Parsed Epoch time remaining: {epoch_minutes} minutes")
+            logger.info(f"Parsed Epoch time remaining via OCR: {epoch_minutes} minutes")
         else:
-            logger.warning("Could not parse Epoch time from OCR text. Checking for progress bar.")
+            logger.warning("Could not parse Epoch time from OCR text. Checking for progress bar as a fallback.")
             try:
-                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@style, 'width')]"
+                # Updated and more specific XPath for the progress bar
+                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@class, 'MuiLinearProgress-bar')]"
                 epoch_element = timers_container.find_element(By.XPATH, epoch_progress_xpath)
                 if epoch_element:
                     style_attribute = epoch_element.get_attribute("style")
                     epoch_minutes = parse_percentage_to_minutes(style_attribute)
-                    logger.info(f"Fallback to percentage succeeded. Minutes: {epoch_minutes}")
-            except Exception:
-                logger.warning("Fallback to percentage also failed.")
+                    logger.info(f"Fallback to percentage succeeded. Minutes remaining: {epoch_minutes}")
+            except Exception as e:
+                logger.warning(f"Fallback to percentage also failed: {e}")
 
     except Exception as e:
-        logger.error(f"An exception occurred in OCR-based scraping.", exc_info=True)
+        logger.error("An exception occurred in get_bioauth_and_epoch_times.", exc_info=True)
         try:
+            # Save debug info
             driver.save_screenshot("/root/selenium_error_ocr.png")
             with open("/root/selenium_page_source_ocr.html", "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
@@ -626,7 +638,6 @@ async def handle_generic_action(update: Update, context: ContextTypes.DEFAULT_TY
         if data.startswith(prefix + "_"):
             server_id = data[len(prefix)+1:]
             if server_id in SERVERS:
-                # These handlers are not decorated, so they need `lang` passed explicitly
                 await handler(update, context, lang, server_id)
                 return
 
@@ -901,16 +912,36 @@ async def restore_local_db_action(update, context, lang, server_id):
     if start_returncode != 0:
         await query.edit_message_text(get_text("msg_failed_to_start_node_after_restore", lang, error=start_stderr), parse_mode=ParseMode.HTML)
 
-def get_latest_snapshot_from_github() -> str | None:
+def get_latest_snapshot_from_github() -> list[dict] | None:
+    """
+    Fetches snapshot asset information from GitHub.
+    Handles both single .tar.gz files and multi-part archives (.part-aa, .part-ab, etc.).
+    """
     try:
-        response = requests.get(GITHUB_SNAPSHOT_URL, timeout=15)
+        config = get_config()
+        github_token = config.get("github_token")
+        headers = {"Authorization": f"token {github_token}"} if github_token else {}
+        
+        response = requests.get(GITHUB_SNAPSHOT_URL, timeout=15, headers=headers)
         response.raise_for_status()
         data = response.json()
-        for asset in data.get("assets", []):
-            if asset.get("name", "").endswith(".tar.gz"):
-                return asset.get("browser_download_url")
+        assets = data.get("assets", [])
+
+        snapshot_parts = [asset for asset in assets if ".part-" in asset.get("name", "")]
+        
+        if snapshot_parts:
+            snapshot_parts.sort(key=lambda x: x['name'])
+            logger.info(f"Found {len(snapshot_parts)} snapshot parts.")
+            return snapshot_parts
+            
+        single_file = next((asset for asset in assets if asset.get("name", "").endswith(".tar.gz")), None)
+        if single_file:
+            logger.info("Found a single .tar.gz snapshot file.")
+            return [single_file]
+
     except Exception as e:
-        logger.error(f"Error getting snapshot from GitHub: {e}")
+        logger.error(f"Error getting snapshot from GitHub: {e}", exc_info=True)
+    
     return None
 
 async def restore_github_db_action(update, context, lang, server_id):
@@ -918,25 +949,58 @@ async def restore_github_db_action(update, context, lang, server_id):
     server_config = SERVERS[server_id]
 
     await query.edit_message_text(get_text("msg_fetching_github_snapshot_url", lang), parse_mode=ParseMode.HTML)
-    download_url = await asyncio.to_thread(get_latest_snapshot_from_github)
+    
+    snapshot_assets = await asyncio.to_thread(get_latest_snapshot_from_github)
 
-    if not download_url:
+    if not snapshot_assets:
         await query.edit_message_text(get_text("msg_failed_to_fetch_github_snapshot_url", lang), parse_mode=ParseMode.HTML)
         return
 
-    snapshot_filename = download_url.split('/')[-1]
-    snapshot_path = f"/tmp/{snapshot_filename}"
+    downloaded_files = []
+    temp_dir = "/tmp"
+    
+    for asset in snapshot_assets:
+        asset_name = asset['name']
+        asset_url = asset['browser_download_url']
+        asset_path = os.path.join(temp_dir, asset_name)
+        downloaded_files.append(asset_path)
+        
+        await query.edit_message_text(get_text("msg_downloading_snapshot", lang, filename=asset_name), parse_mode=ParseMode.HTML)
+        
+        wget_cmd = f"wget -q -O {shlex.quote(asset_path)} {shlex.quote(asset_url)}"
+        wget_returncode, _, wget_stderr = await execute_command(server_config, wget_cmd)
+        
+        if wget_returncode != 0:
+            await query.edit_message_text(get_text("msg_failed_to_download_snapshot", lang, error=wget_stderr), parse_mode=ParseMode.HTML)
+            if downloaded_files:
+                await execute_command(server_config, f"rm -f {' '.join(map(shlex.quote, downloaded_files))}")
+            return
 
-    await query.edit_message_text(get_text("msg_downloading_snapshot", lang, filename=snapshot_filename), parse_mode=ParseMode.HTML)
-    wget_returncode, _, wget_stderr = await execute_command(server_config, f"wget -O {snapshot_path} {download_url}")
-    if wget_returncode != 0:
-        await query.edit_message_text(get_text("msg_failed_to_download_snapshot", lang, error=wget_stderr), parse_mode=ParseMode.HTML)
-        return
+    is_multi_part = len(downloaded_files) > 1 and ".part-" in downloaded_files[0]
+    
+    if is_multi_part:
+        first_part_name = os.path.basename(downloaded_files[0])
+        combined_filename = re.sub(r'\\.part-aa$', '', first_part_name, flags=re.IGNORECASE)
+        final_archive_path = os.path.join(temp_dir, combined_filename)
+        
+        await query.edit_message_text(get_text("msg_combining_snapshot_parts", lang, filename=combined_filename), parse_mode=ParseMode.HTML)
+        
+        downloaded_files.sort() 
+        cat_cmd = f"cat {' '.join(map(shlex.quote, downloaded_files))} > {shlex.quote(final_archive_path)}"
+        combine_returncode, _, combine_stderr = await execute_command(server_config, cat_cmd)
+
+        if combine_returncode != 0:
+            await query.edit_message_text(get_text("msg_failed_to_combine_snapshot", lang, error=combine_stderr), parse_mode=ParseMode.HTML)
+            await execute_command(server_config, f"rm -f {' '.join(map(shlex.quote, downloaded_files))}")
+            return
+    else:
+        final_archive_path = downloaded_files[0]
 
     await query.edit_message_text(get_text("msg_stopping_node_for_restore", lang), parse_mode=ParseMode.HTML)
     stop_returncode, _, stop_stderr = await execute_command(server_config, "sudo systemctl stop humanode-peer.service")
     if stop_returncode != 0:
         await query.edit_message_text(get_text("msg_failed_to_stop_node", lang, error=stop_stderr), parse_mode=ParseMode.HTML)
+        await execute_command(server_config, f"rm -f {shlex.quote(final_archive_path)} {' '.join(map(shlex.quote, downloaded_files))}")
         return
 
     db_path = "/root/.humanode/workspaces/default/substrate-data/chains/humanode_mainnet/db/full"
@@ -945,10 +1009,11 @@ async def restore_github_db_action(update, context, lang, server_id):
     if rm_returncode != 0:
         await query.edit_message_text(get_text("msg_failed_to_delete_db", lang, error=rm_stderr), parse_mode=ParseMode.HTML)
         await execute_command(server_config, "sudo systemctl start humanode-peer.service")
+        await execute_command(server_config, f"rm -f {shlex.quote(final_archive_path)} {' '.join(map(shlex.quote, downloaded_files))}")
         return
 
     await query.edit_message_text(get_text("msg_unpacking_snapshot", lang), parse_mode=ParseMode.HTML)
-    restore_cmd = f"tar -xzvf {snapshot_path} -C /"
+    restore_cmd = f"tar -xzvf {shlex.quote(final_archive_path)} -C /"
     restore_returncode, _, restore_stderr = await execute_command(server_config, restore_cmd)
     if restore_returncode != 0:
         await query.edit_message_text(get_text("msg_failed_to_unpack_snapshot", lang, error=restore_stderr), parse_mode=ParseMode.HTML)
@@ -960,7 +1025,8 @@ async def restore_github_db_action(update, context, lang, server_id):
     if start_returncode != 0:
         await query.edit_message_text(get_text("msg_failed_to_start_node_after_restore", lang, error=start_stderr), parse_mode=ParseMode.HTML)
 
-    await execute_command(server_config, f"rm -f {snapshot_path}")
+    cleanup_files = downloaded_files + ([final_archive_path] if is_multi_part else [])
+    await execute_command(server_config, f"rm -f {' '.join(map(shlex.quote, cleanup_files))}")
 
 
 async def get_element_screenshot_action(update, context, lang, server_id):
@@ -1155,7 +1221,6 @@ def main():
     application.add_handler(CallbackQueryHandler(notification_settings_menu, pattern="^notification_settings$"))
     application.add_handler(settings_conv_handler)
     application.add_handler(add_server_conv_handler)
-    # Fallback handler for all other actions. It MUST be last.
     application.add_handler(CallbackQueryHandler(handle_generic_action))
 
     logger.info("Bot handlers added. Starting polling...")

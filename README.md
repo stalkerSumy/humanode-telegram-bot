@@ -2,14 +2,32 @@
 
 A Telegram bot to manage and monitor your Humanode nodes.
 
-## Features
+## Основні функції
 
-- Interactive installation
-- Multi-language support (English/Ukrainian)
-- Manage multiple servers (local and remote via SSH)
-- Get bio-authentication and epoch timers using Selenium
-- Start, stop, restart, and check the status of your node service
-- View node logs directly from Telegram
+Цей Telegram-бот призначений для комплексного керування та моніторингу ваших нод Humanode.
+
+*   **Інтерактивне керування через меню:**
+    *   Зручний інтерфейс на основі кнопок у Telegram для доступу до всіх функцій.
+    *   Підтримка кількох мов (українська/англійська).
+
+*   **Керування кількома серверами:**
+    *   Можливість керувати як локальною нодою, так і віддаленими серверами через SSH.
+    *   Безпечне підключення за допомогою SSH-ключів.
+
+*   **Моніторинг таймерів (Selenium + OCR):**
+    *   **Автоматичне отримання URL:** Бот самостійно знаходить актуальне посилання на веб-панель, аналізуючи логи тунелю.
+    *   **Розпізнавання таймерів:** Використовує Selenium для доступу до веб-панелі та технологію OCR (Tesseract) для зчитування часу, що залишився до біоаутентифікації та кінця епохи.
+    *   **Автоматичні сповіщення:** Надсилає попередження, коли час до біоаутентифікації стає критично малим (наприклад, 30 та 10 хвилин).
+
+*   **Керування нодою та сервісами:**
+    *   Повний контроль над сервісом `humanode-peer`: запуск, зупинка, перезапуск та перевірка статусу.
+    *   Керування сервісом `humanode-websocket-tunnel` для забезпечення стабільного з'єднання.
+    *   Можливість переглядати останні логи ноди безпосередньо в Telegram.
+
+*   **Оновлення та резервне копіювання:**
+    *   **Оновлення ноди:** Автоматичне завантаження останньої версії бінарного файлу `humanode-peer` з GitHub та його встановлення.
+    *   **Резервне копіювання:** Створення локальних бекапів бази даних ноди.
+    *   **Відновлення з бекапу:** Можливість відновити базу даних з локального файлу або з офіційного знімку (snapshot) з GitHub, включаючи підтримку багатофайлових архівів.
 
 ## Installation
 
@@ -28,14 +46,13 @@ After installation, the bot will be running as a `systemd` service.
 
 Open Telegram, find your bot, and send the `/start` command to begin.
 
- Uninstallation
+## Uninstallation
 
- To completely remove the bot and its service from your system, run the following command:
- 
-```
-  /bin/bash -c "$(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh)"
-```
+To completely remove the bot and its service from your system, run the following command:
 
+```bash
+/bin/bash -c "$(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh)"
+```
 
 ## ❤️ Support the Project
 
