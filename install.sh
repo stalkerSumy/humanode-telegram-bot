@@ -147,27 +147,22 @@ main() {
     fi
 
     # 4. Clone or Update Repository
-    # The repository is private, so we must use SSH.
-    local repo_url="git@github.com:stalkerSumy/humanode-telegram-bot.git"
-    # This command wrapper will auto-accept the GitHub host key.
-    # It is safe because the key fingerprint is known and can be verified.
-    # This avoids interactive prompts.
-    local git_ssh_cmd="GIT_SSH_COMMAND=\"ssh -o StrictHostKeyChecking=accept-new\""
+    local repo_url="https://github.com/stalkerSumy/humanode-telegram-bot.git"
 
     if [ -d "$INSTALL_DIR" ]; then
         info "$(printf "${TEXTS[repo_exists]}" "$INSTALL_DIR")"
         cd "$INSTALL_DIR"
-        # Ensure the remote URL is correct (SSH) before pulling
+        # Ensure the remote URL is correct before pulling
         $SUDO_CMD git remote set-url origin "$repo_url"
-        # Use the SSH wrapper for the pull command
-        $SUDO_CMD eval "$git_ssh_cmd git pull"
+        # Use GIT_TERMINAL_PROMPT=0 to prevent interactive prompts
+        $SUDO_CMD env GIT_TERMINAL_PROMPT=0 git pull
     else
         info "$(printf "${TEXTS[cloning_repo]}" "$INSTALL_DIR")"
         # Clone to a temporary directory as the current user
         local tmp_dir
         tmp_dir=$(mktemp -d)
-        # Use the SSH wrapper for the clone command
-        eval "$git_ssh_cmd git clone '$repo_url' '$tmp_dir'"
+        # Use GIT_TERMINAL_PROMPT=0 to prevent git from asking for credentials
+        env GIT_TERMINAL_PROMPT=0 git clone "$repo_url" "$tmp_dir"
         
         # Move the cloned repo to the final destination with sudo
         $SUDO_CMD mv "$tmp_dir" "$INSTALL_DIR"
