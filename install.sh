@@ -148,19 +148,23 @@ main() {
 
     # 4. Clone or Update Repository
     local repo_url="https://github.com/stalkerSumy/humanode-telegram-bot.git"
+    # This git config override is crucial for environments where git is configured
+    # to convert all https://github.com URLs to ssh.
+    local git_cmd="git -c url.https://github.com/.insteadOf="
+
     if [ -d "$INSTALL_DIR" ]; then
         info "$(printf "${TEXTS[repo_exists]}" "$INSTALL_DIR")"
         cd "$INSTALL_DIR"
         # Ensure the remote URL is correct before pulling
         $SUDO_CMD git remote set-url origin "$repo_url"
-        $SUDO_CMD git pull
+        $SUDO_CMD $git_cmd pull
     else
         info "$(printf "${TEXTS[cloning_repo]}" "$INSTALL_DIR")"
         # Clone to a temporary directory as the current user
         # This avoids running git clone with sudo, which can cause SSH key issues
         local tmp_dir
         tmp_dir=$(mktemp -d)
-        git clone "$repo_url" "$tmp_dir"
+        $git_cmd clone "$repo_url" "$tmp_dir"
         
         # Move the cloned repo to the final destination with sudo
         $SUDO_CMD mv "$tmp_dir" "$INSTALL_DIR"
