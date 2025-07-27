@@ -151,10 +151,23 @@ main() {
     if [ -d "$INSTALL_DIR" ]; then
         info "$(printf "${TEXTS[repo_exists]}" "$INSTALL_DIR")"
         cd "$INSTALL_DIR"
+        # Git pull might require permissions if dir is owned by root.
+        # This assumes the user running the script has sudo rights to write to the dir.
         $SUDO_CMD git pull
     else
         info "$(printf "${TEXTS[cloning_repo]}" "$INSTALL_DIR")"
-        $SUDO_CMD git clone "$repo_url" "$INSTALL_DIR"
+        # Clone to a temporary directory as the current user
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        git clone "$repo_url" "$tmp_dir"
+        
+        # Move the cloned repo to the final destination with sudo
+        $SUDO_CMD mv "$tmp_dir" "$INSTALL_DIR"
+        
+        # Clean up if the temp dir still exists for some reason
+        if [ -d "$tmp_dir" ]; then
+            rm -rf "$tmp_dir"
+        fi
     fi
     cd "$INSTALL_DIR"
 
