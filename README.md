@@ -2,7 +2,7 @@
 
 A Telegram bot to manage and monitor your Humanode nodes.
 
-✦ Of course. Here is the English translation:
+✦ English translation:
 
   Core Features
 
