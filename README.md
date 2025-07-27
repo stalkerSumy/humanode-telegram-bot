@@ -1,7 +1,46 @@
 # Humanode Management Bot
+✦ Here is the translation:
+
+  Disclaimer: Everything you do is at your own risk!
+
+  The bot is installed on an already prepared node. In the launcher, stop the node, exit the launcher, and then install the bot. It is
+  important to start at the beginning of an epoch.
 
 A Telegram bot to manage and monitor your Humanode nodes.
 
+✦ English translation:
+
+  Core Features
+
+  This Telegram bot is designed for comprehensive management and monitoring of your Humanode nodes.
+
+   * Interactive Menu-Driven Control:
+       * A convenient button-based interface in Telegram for accessing all functions.
+       * Support for multiple languages (Ukrainian/English).
+
+   * Multi-Server Management:
+       * Ability to manage both a local node and remote servers via SSH.
+       * Secure connection using SSH keys.
+
+   * Timer Monitoring (Selenium + OCR):
+       * Automatic URL Retrieval: The bot independently finds the current link to the web dashboard by analyzing tunnel logs.
+       * Timer Recognition: Uses Selenium to access the web dashboard and OCR technology (Tesseract) to read the time remaining for
+         bio-authentication and the end of the epoch.
+       * Automatic Notifications: Sends warnings when the time for bio-authentication becomes critically low (e.g., 30 and 10 minutes).
+
+   * Node and Service Management:
+       * Full control over the humanode-peer service: start, stop, restart, and status checks.
+       * Management of the humanode-websocket-tunnel service to ensure a stable connection.
+       * Ability to view the latest node logs directly in Telegram.
+
+   * Updates and Backups:
+       * Node Update: Automatically downloads the latest version of the humanode-peer binary from GitHub and installs it.
+       * Backup Creation: Creates local backups of the node's database.
+       * Restore from Backup: Ability to restore the database from a local file or from an official snapshot from GitHub, including support for
+         multi-part archives.
+
+
+#UA#
 ## Основні функції
 
 Цей Telegram-бот призначений для комплексного керування та моніторингу ваших нод Humanode.
@@ -34,7 +73,7 @@ A Telegram bot to manage and monitor your Humanode nodes.
 To install the bot, run the following command on your server and follow the on-screen instructions:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-bot-dist/main/install.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh)
 ```
 
 ## Usage
