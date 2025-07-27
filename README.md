@@ -73,7 +73,7 @@ A Telegram bot to manage and monitor your Humanode nodes.
 To install the bot, run the following command on your server and follow the on-screen instructions:
 
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-bot-dist/main/install.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh)
 ```
 
 ## Usage
