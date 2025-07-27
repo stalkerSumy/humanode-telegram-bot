@@ -38,15 +38,46 @@ import io
 
 # --- Constants ---
 BOT_VERSION = "1.3.5" # Incremented version
-TOKEN = "7687787104:AAFccrcsx425HA9reJ-dpAJZIrirx8WIHec"
-AUTHORIZED_USER_ID = DUMMY_USER_ID
-STATE_FILE = "/root/bot_state.json"
-LOG_FILE = "humanode_bot.log"
+
+# --- Constants ---
+BOT_VERSION = "1.3.5" # Incremented version
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+STATE_FILE = os.path.join(BASE_DIR, "bot_state.json")
+SERVERS_CONFIG_FILE = os.path.join(BASE_DIR, "servers.json")
+LOG_FILE = os.path.join(BASE_DIR, "humanode_bot.log")
+LOCALES_DIR = os.path.join(BASE_DIR, "locales")
+
+# --- Config Loading ---
+def load_config():
+    """Loads config from config.json."""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+            # logger is not available yet here, so we print
+            print("Successfully loaded config.json.")
+            return config
+    except FileNotFoundError:
+        print(f"CRITICAL: {CONFIG_FILE} not found. Please create it with your bot token and user ID.")
+        return {}
+    except json.JSONDecodeError:
+        print(f"CRITICAL: Could not decode {CONFIG_FILE}. Please check its format.")
+        return {}
+    except Exception as e:
+        print(f"CRITICAL: An unexpected error occurred while loading config.json: {e}")
+        return {}
+
+config = load_config()
+TOKEN = config.get("telegram_bot_token")
+AUTHORIZED_USER_ID = config.get("authorized_user_id")
+# Convert to int if it's a string from json
+if isinstance(AUTHORIZED_USER_ID, str) and AUTHORIZED_USER_ID.isdigit():
+    AUTHORIZED_USER_ID = int(AUTHORIZED_USER_ID)
+
 FULL_CHECK_INTERVAL_HOURS = 168
 JOB_QUEUE_INTERVAL_MINUTES = 1
-LOCALES_DIR = "locales"
 GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
-SERVERS_CONFIG_FILE = "/root/servers.json"
+
 
 # --- Logging Setup ---
 logging.basicConfig(

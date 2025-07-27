@@ -176,23 +176,28 @@ main() {
 
     # 5. Gather Configuration
     info "${TEXTS[config_start]}"
-    local config_file="$INSTALL_DIR/config.json"
+    local bot_dir="$INSTALL_DIR/bot"
+    local config_file="$bot_dir/config.json"
+    local servers_file="$bot_dir/servers.json"
     
     read -sp "${TEXTS[token_prompt]}" token
     echo
     read -p "${TEXTS[user_id_prompt]}" user_id
+    read -p "Введіть ваш токен GitHub для доступу до приватних репозиторіїв (необов'язково, можна пропустити): " github_token
+
 
     local json_config
     json_config=$(jq -n \
                   --arg token "$token" \
                   --arg user_id "$user_id" \
+                  --arg github_token "$github_token" \
                   '{
                       "telegram_bot_token": $token, 
-                      "authorized_user_id": ($user_id | tonumber), 
-                      "state_file": "/var/log/humanode-bot/bot_state.json",
-                      "log_file": "/var/log/humanode-bot/humanode_bot.log",
-                      "servers": {}
+                      "authorized_user_id": ($user_id | tonumber),
+                      "github_token": $github_token
                    }')
+
+    local servers_config="{}"
 
     while true; do
         read -p "${TEXTS[add_server_prompt]}" add_server
@@ -216,18 +221,19 @@ main() {
             read -p "${TEXTS[key_path_prompt]}" key_path
         fi
 
-        json_config=$(echo "$json_config" | jq \
+        servers_config=$(echo "$servers_config" | jq \
             --arg id "$server_id" \
             --arg name "$server_name" \
             --arg ip "$ip" \
             --arg user "$user" \
             --arg key_path "$key_path" \
             --argjson is_local "$is_local" \
-            '.servers[$id] = {name: $name, ip: $ip, user: $user, key_path: $key_path, is_local: $is_local}')
+            '.[$id] = {name: $name, ip: $ip, user: $user, key_path: $key_path, is_local: $is_local}')
     done
 
     info "${TEXTS[config_creating]}"
     echo "$json_config" | jq '.' | $SUDO_CMD tee "$config_file" > /dev/null
+    echo "$servers_config" | jq '.' | $SUDO_CMD tee "$servers_file" > /dev/null
     success "${TEXTS[config_done]}"
 
     # 6. Setup Python Environment
@@ -239,9 +245,9 @@ main() {
     $SUDO_CMD "$venv_dir/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
     success "${TEXTS[req_done]}"
 
-    # 7. Create log directory
-    $SUDO_CMD mkdir -p /var/log/humanode-bot
-    $SUDO_CMD chown -R "$(whoami):$(whoami)" /var/log/humanode-bot || true # Allow failure if user doesn't exist
+    # 7. Set ownership
+    # Change ownership of the entire bot directory to the current user
+    $SUDO_CMD chown -R "$(whoami):$(id -gn)" "$INSTALL_DIR"
 
     # 8. Setup systemd Service
     info "${TEXTS[systemd_setup]}"
@@ -255,8 +261,8 @@ After=network.target
 [Service]
 User=$(whoami)
 Group=$(id -gn)
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$venv_dir/bin/python3 $INSTALL_DIR/bot/humanode_bot.py
+WorkingDirectory=$bot_dir
+ExecStart=$venv_dir/bin/python3 $bot_dir/humanode_bot.py
 Restart=always
 RestartSec=5
 
