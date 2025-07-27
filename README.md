@@ -1,4 +1,10 @@
 # Humanode Management Bot
+✦ Here is the translation:
+
+  Disclaimer: Everything you do is at your own risk!
+
+  The bot is installed on an already prepared node. In the launcher, stop the node, exit the launcher, and then install the bot. It is
+  important to start at the beginning of an epoch.
 
 A Telegram bot to manage and monitor your Humanode nodes.
 
