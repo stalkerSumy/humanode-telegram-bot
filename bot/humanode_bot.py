@@ -14,7 +14,7 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
-from telegram.ext (
+from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,

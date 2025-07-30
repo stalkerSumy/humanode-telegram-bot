@@ -28,6 +28,8 @@ setup_texts() {
         TEXTS[config_start]="Починаю інтерактивне налаштування..."
         TEXTS[token_prompt]="Введіть ваш Telegram Bot Token: "
         TEXTS[user_id_prompt]="Введіть ваш авторизований Telegram User ID: "
+        TEXTS[github_token_prompt]="Введіть ваш токен GitHub для доступу до приватних репозиторіїв (необов'язково, можна пропустити): "
+        TEXTS[input_empty_error]="Поле не може бути порожнім."
         TEXTS[add_server_prompt]="Хочете додати сервер для моніторингу? (y/n): "
         TEXTS[server_id_prompt]="Введіть унікальний ID для сервера (латиницею, без пробілів, напр., my_vps1): "
         TEXTS[server_name_prompt]="Введіть ім'я сервера для відображення (напр., 'Мій головний вузол'): "
@@ -62,6 +64,8 @@ setup_texts() {
         TEXTS[config_start]="Starting interactive configuration..."
         TEXTS[token_prompt]="Enter your Telegram Bot Token: "
         TEXTS[user_id_prompt]="Enter your authorized Telegram User ID: "
+        TEXTS[github_token_prompt]="Enter your GitHub token for private repo access (optional, press Enter to skip): "
+        TEXTS[input_empty_error]="Input cannot be empty."
         TEXTS[add_server_prompt]="Do you want to add a server to monitor? (y/n): "
         TEXTS[server_id_prompt]="Enter a unique ID for the server (latin chars, no spaces, e.g., my_vps1): "
         TEXTS[server_name_prompt]="Enter a friendly name for the server (e.g., 'My Main Node'): "
@@ -88,6 +92,26 @@ setup_texts() {
 info() { echo -e "\033[0;34mINFO:\033[0m $1"; }
 success() { echo -e "\033[0;32mSUCCESS:\033[0m $1"; }
 error() { echo -e "\033[0;31mERROR:\033[0m $1" >&2; exit 1; }
+prompt_for_input() {
+    local prompt_text="$1"
+    local var_name="$2"
+    local is_secret="${3:-false}"
+    local input_value
+    while true; do
+        if [ "$is_secret" = true ]; then
+            read -sp "$prompt_text" input_value
+            echo
+        else
+            read -p "$prompt_text" input_value
+        fi
+        if [ -n "$input_value" ]; then
+            eval "$var_name=\"$input_value\""
+            break
+        else
+            info "${TEXTS[input_empty_error]}"
+        fi
+    done
+}
 
 # --- Main Logic ---
 main() {
@@ -110,11 +134,8 @@ main() {
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
         local missing_str="${missing_deps[*]}"
-        local msg
         printf -v msg "${TEXTS[dep_missing]}" "$missing_str"
         info "$msg"
-
-        # Attempt to auto-install
         if command -v apt-get &> /dev/null; then
             read -p "${TEXTS[dep_install_prompt]}" -n 1 -r
             echo
@@ -126,7 +147,6 @@ main() {
                 error "Встановлення скасовано користувачем. / Installation cancelled by user."
             fi
         else
-            local manual_install_msg
             printf -v manual_install_msg "${TEXTS[dep_manual_install]}" "$missing_str"
             error "Не вдалося знайти 'apt-get'. $manual_install_msg / Could not find 'apt-get'. $manual_install_msg"
         fi
@@ -136,9 +156,12 @@ main() {
     # 3. Get Installation Directory
     read -p "${TEXTS[install_dir_prompt]}" INSTALL_DIR
     INSTALL_DIR=${INSTALL_DIR:-/opt/humanode-bot}
+    
+    # Convert to absolute path
+    INSTALL_DIR=$(readlink -f "$INSTALL_DIR")
 
     # Check if sudo is needed and available
-    if [[ "$INSTALL_DIR" == "/opt/"* ]] && [[ "$EUID" -ne 0 ]]; then
+    if [[ ! -w "$(dirname "$INSTALL_DIR")" ]] && [[ "$EUID" -ne 0 ]]; then
         info "$(printf "${TEXTS[sudo_needed]}" "$INSTALL_DIR")"
         if ! command -v sudo &> /dev/null; then
             error "sudo command not found, but required to install in $INSTALL_DIR"
@@ -152,25 +175,15 @@ main() {
     if [ -d "$INSTALL_DIR" ]; then
         info "$(printf "${TEXTS[repo_exists]}" "$INSTALL_DIR")"
         cd "$INSTALL_DIR"
-        # Ensure the remote URL is correct before pulling
         $SUDO_CMD git remote set-url origin "$repo_url"
-        # Use GIT_TERMINAL_PROMPT=0 to prevent interactive prompts
         $SUDO_CMD env GIT_TERMINAL_PROMPT=0 git pull
     else
         info "$(printf "${TEXTS[cloning_repo]}" "$INSTALL_DIR")"
-        # Clone to a temporary directory as the current user
-        local tmp_dir
-        tmp_dir=$(mktemp -d)
-        # Use GIT_TERMINAL_PROMPT=0 to prevent git from asking for credentials
+        $SUDO_CMD mkdir -p "$INSTALL_DIR"
+        local tmp_dir; tmp_dir=$(mktemp -d)
         env GIT_TERMINAL_PROMPT=0 git clone "$repo_url" "$tmp_dir"
-        
-        # Move the cloned repo to the final destination with sudo
-        $SUDO_CMD mv "$tmp_dir" "$INSTALL_DIR"
-        
-        # Clean up if the temp dir still exists for some reason
-        if [ -d "$tmp_dir" ]; then
-            rm -rf "$tmp_dir"
-        fi
+        $SUDO_CMD rsync -a "$tmp_dir/" "$INSTALL_DIR/"
+        rm -rf "$tmp_dir"
     fi
     cd "$INSTALL_DIR"
 
@@ -180,11 +193,9 @@ main() {
     local config_file="$bot_dir/config.json"
     local servers_file="$bot_dir/servers.json"
     
-    read -sp "${TEXTS[token_prompt]}" token
-    echo
-    read -p "${TEXTS[user_id_prompt]}" user_id
-    read -p "Введіть ваш токен GitHub для доступу до приватних репозиторіїв (необов'язково, можна пропустити): " github_token
-
+    prompt_for_input "${TEXTS[token_prompt]}" token true
+    prompt_for_input "${TEXTS[user_id_prompt]}" user_id
+    read -p "${TEXTS[github_token_prompt]}" github_token
 
     local json_config
     json_config=$(jq -n \
@@ -192,42 +203,31 @@ main() {
                   --arg user_id "$user_id" \
                   --arg github_token "$github_token" \
                   '{
-                      "telegram_bot_token": $token, 
-                      "authorized_user_id": ($user_id | tonumber),
-                      "github_token": $github_token
+                      "telegram_bot_token": $token, \
+                      "authorized_user_id": ($user_id | tonumber),\n                      "github_token": $github_token
                    }')
 
     local servers_config="{}"
-
     while true; do
         read -p "${TEXTS[add_server_prompt]}" add_server
-        if [[ "$add_server" != "y" ]]; then break; fi
+        if [[ ! "$add_server" =~ ^[Yy]$ ]]; then break; fi
 
-        read -p "${TEXTS[server_id_prompt]}" server_id
-        read -p "${TEXTS[server_name_prompt]}" server_name
+        prompt_for_input "${TEXTS[server_id_prompt]}" server_id
+        prompt_for_input "${TEXTS[server_name_prompt]}" server_name
         read -p "${TEXTS[is_local_prompt]}" is_local_raw
         
-        local is_local="false"
-        local ip="127.0.0.1"
-        local user="root"
-        local key_path=""
-
-        if [[ "$is_local_raw" == "y" ]]; then
+        local is_local="false"; local ip="127.0.0.1"; local user="root"; local key_path=""
+        if [[ "$is_local_raw" =~ ^[Yy]$ ]]; then
             is_local="true"
         else
-            read -p "${TEXTS[server_ip_prompt]}" ip
-            read -p "${TEXTS[server_user_prompt]}" user
-            user=${user:-root}
-            read -p "${TEXTS[key_path_prompt]}" key_path
+            prompt_for_input "${TEXTS[server_ip_prompt]}" ip
+            read -p "${TEXTS[server_user_prompt]}" user; user=${user:-root}
+            prompt_for_input "${TEXTS[key_path_prompt]}" key_path
         fi
 
         servers_config=$(echo "$servers_config" | jq \
-            --arg id "$server_id" \
-            --arg name "$server_name" \
-            --arg ip "$ip" \
-            --arg user "$user" \
-            --arg key_path "$key_path" \
-            --argjson is_local "$is_local" \
+            --arg id "$server_id" --arg name "$server_name" --arg ip "$ip" --arg user "$user" \
+            --arg key_path "$key_path" --argjson is_local "$is_local" \
             '.[$id] = {name: $name, ip: $ip, user: $user, key_path: $key_path, is_local: $is_local}')
     done
 
@@ -246,8 +246,9 @@ main() {
     success "${TEXTS[req_done]}"
 
     # 7. Set ownership
-    # Change ownership of the entire bot directory to the current user
-    $SUDO_CMD chown -R "$(whoami):$(id -gn)" "$INSTALL_DIR"
+    if [ -n "$SUDO_CMD" ]; then
+        $SUDO_CMD chown -R "$(whoami):$(id -gn)" "$INSTALL_DIR"
+    fi
 
     # 8. Setup systemd Service
     info "${TEXTS[systemd_setup]}"
