@@ -83,6 +83,21 @@ After installation, the bot will be running as a `systemd` service.
 
 Open Telegram, find your bot, and send the `/start` command to begin.
 
+## Screenshots
+
+| Main Menu | Server Menu |
+| :---: | :---: |
+| <img src="screenshots/photo_1_2025-07-30_14-06-47.jpg" width="300"> | <img src="screenshots/photo_2_2025-07-30_14-06-47.jpg" width="300"> |
+
+| Node Management | Backup Menu |
+| :---: | :---: |
+| <img src="screenshots/photo_3_2025-07-30_14-06-47.jpg" width="300"> | <img src="screenshots/photo_4_2025-07-30_14-06-47.jpg" width="300"> |
+
+| Bio-Auth Timer |
+| :---: |
+| <img src="screenshots/photo_5_2025-07-30_14-06-58.jpg" width="300"> |
+
+
 ## Uninstallation
 
 To completely remove the bot and its service from your system, run the following command:
