@@ -202,10 +202,7 @@ main() {
                   --arg token "$token" \
                   --arg user_id "$user_id" \
                   --arg github_token "$github_token" \
-                  '{
-                      "telegram_bot_token": $token, \
-                      "authorized_user_id": ($user_id | tonumber),\n                      "github_token": $github_token
-                   }')
+                  '{telegram_bot_token: $token, authorized_user_id: ($user_id | tonumber), github_token: $github_token}')
 
     local servers_config="{}"
     while true; do
