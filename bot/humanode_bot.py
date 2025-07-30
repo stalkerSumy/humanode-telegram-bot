@@ -14,7 +14,7 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
-from telegram.ext import (
+from telegram.ext (
     Application,
     CommandHandler,
     ContextTypes,
@@ -38,15 +38,15 @@ import io
 
 # --- Constants ---
 BOT_VERSION = "1.3.5" # Incremented version
-
-# --- Constants ---
-BOT_VERSION = "1.3.5" # Incremented version
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 STATE_FILE = os.path.join(BASE_DIR, "bot_state.json")
 SERVERS_CONFIG_FILE = os.path.join(BASE_DIR, "servers.json")
 LOG_FILE = os.path.join(BASE_DIR, "humanode_bot.log")
 LOCALES_DIR = os.path.join(BASE_DIR, "locales")
+FULL_CHECK_INTERVAL_HOURS = 168
+JOB_QUEUE_INTERVAL_MINUTES = 5
+GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
 
 # --- Config Loading ---
 def load_config():
@@ -54,7 +54,6 @@ def load_config():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-            # logger is not available yet here, so we print
             print("Successfully loaded config.json.")
             return config
     except FileNotFoundError:
@@ -70,14 +69,13 @@ def load_config():
 config = load_config()
 TOKEN = config.get("telegram_bot_token")
 AUTHORIZED_USER_ID = config.get("authorized_user_id")
-# Convert to int if it's a string from json
 if isinstance(AUTHORIZED_USER_ID, str) and AUTHORIZED_USER_ID.isdigit():
     AUTHORIZED_USER_ID = int(AUTHORIZED_USER_ID)
+GITHUB_TOKEN = config.get("github_token")
 
-FULL_CHECK_INTERVAL_HOURS = 168
-JOB_QUEUE_INTERVAL_MINUTES = 1
-GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
 
+# --- Global Lock ---
+IS_CHECK_RUNNING = False
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -329,6 +327,24 @@ async def notification_settings_menu(update: Update, context: ContextTypes.DEFAU
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
 # --- Utility Functions ---
+def create_selenium_driver():
+    """Creates and returns a new Selenium Chrome driver instance."""
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    
+    try:
+        service = ChromeService(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        logger.info("Successfully created a new Selenium driver instance.")
+        return driver
+    except Exception as e:
+        logger.error(f"Failed to create Selenium driver: {e}", exc_info=True)
+        return None
+
 def format_seconds_to_hhmmss(seconds: int) -> str:
     if seconds < 0:
         return "N/A"
@@ -458,42 +474,42 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
     epoch_minutes = -1
 
     try:
-        wait = WebDriverWait(driver, 60) # Increased wait time
+        wait = WebDriverWait(driver, 90)  # Total wait time of 90 seconds
         logger.info(f"Selenium: Navigating to URL: {url}")
         driver.get(url)
 
-        # Click the accordion to open the dashboard view
-        dashboard_accordion_xpath = "//span[contains(text(), 'Dashboard')]/ancestor::div[contains(@class, 'MuiAccordionSummary-root')]"
+        # This is the most reliable way: wait for the dashboard button to be clickable.
+        # This single wait handles both fast and slow page loads.
+        dashboard_accordion_xpath = "//span[contains(text(), 'Dashboard')]/ancestor::div[contains(@class, 'MuiAccordionSummary-root')]";
+        logger.info("Waiting for the dashboard to be clickable...")
         wait.until(EC.element_to_be_clickable((By.XPATH, dashboard_accordion_xpath))).click()
+        logger.info("Dashboard clicked.")
 
-        # Wait for the container with timers to be visible
-        timers_container_xpath = "//div[contains(@class, 'MuiAccordionDetails-root')]//div[contains(@class, 'css-ak0d3g')]"
+        timers_container_xpath = "//div[contains(@class, 'MuiAccordionDetails-root')]//div[contains(@class, 'css-ak0d3g')]";
         timers_container = wait.until(EC.visibility_of_element_located((By.XPATH, timers_container_xpath)))
         
-        logger.info("Waiting up to 10 seconds for timer data to stabilize...")
-        # Instead of fixed sleep, wait for a specific element that indicates data is loaded.
-        # Here, we wait for the bioauth timer text to be present.
-        wait.until(EC.presence_of_element_located((By.XPATH, f"{timers_container_xpath}//p[text()='Bio-authentication']/following-sibling::h6")))
+        # EXPERIMENT: Instead of waiting for a specific element, we use a fixed
+        # delay, just like in the working take_element_screenshot function.
+        # This will help determine if the problem is with the wait condition itself.
+        logger.info("Using fixed 10-second delay instead of smart wait.")
+        time.sleep(10)
 
         screenshot_bytes = timers_container.screenshot_as_png
-
         image = Image.open(io.BytesIO(screenshot_bytes))
         ocr_text = pytesseract.image_to_string(image)
         logger.info(f"OCR Result:\n---\n{ocr_text}\n---")
 
-        # Regex for HHH:MM:SS format
-        bioauth_match = re.search(r'(\d{1,3}):(\d{2}):(\d{2})', ocr_text)
+        # More robust regex for HHH:MM:SS format
+        bioauth_match = re.search(r'(\d{1,3})\s*:\s*(\d{2})\s*:\s*(\d{2})', ocr_text)
         if bioauth_match:
             h, m, s = map(int, bioauth_match.groups())
             bioauth_seconds = timedelta(hours=h, minutes=m, seconds=s).total_seconds()
             logger.info(f"Parsed Bio-authentication time: {bioauth_seconds} seconds")
 
-        # Regex for epoch time based on "Total" and "Progress" text
-        total_match = re.search(r'Total:\s*(\d+)\s*hr', ocr_text, re.IGNORECASE)
+        # Regex for epoch time
         progress_match = re.search(r'Progress:\s*(\d+)\s*hr[s]?\s*(\d+)\s*min', ocr_text, re.IGNORECASE)
-        
-        if total_match and progress_match:
-            total_duration = timedelta(hours=int(total_match.group(1)))
+        if progress_match:
+            total_duration = timedelta(hours=4)
             progress_duration = timedelta(hours=int(progress_match.group(1)), minutes=int(progress_match.group(2)))
             remaining_duration = total_duration - progress_duration
             epoch_minutes = int(remaining_duration.total_seconds() / 60)
@@ -501,8 +517,7 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
         else:
             logger.warning("Could not parse Epoch time from OCR text. Checking for progress bar as a fallback.")
             try:
-                # Updated and more specific XPath for the progress bar
-                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@class, 'MuiLinearProgress-bar')]"
+                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@class, 'MuiLinearProgress-bar')]";
                 epoch_element = timers_container.find_element(By.XPATH, epoch_progress_xpath)
                 if epoch_element:
                     style_attribute = epoch_element.get_attribute("style")
@@ -514,9 +529,8 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
     except Exception as e:
         logger.error("An exception occurred in get_bioauth_and_epoch_times.", exc_info=True)
         try:
-            # Save debug info
-            driver.save_screenshot("/root/selenium_error_ocr.png")
-            with open("/root/selenium_page_source_ocr.html", "w", encoding="utf-8") as f:
+            driver.save_screenshot(os.path.join(BASE_DIR, "selenium_error_ocr.png"))
+            with open(os.path.join(BASE_DIR, "selenium_page_source_ocr.html"), "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
         except Exception as dump_e:
             logger.error(f"Failed to save screenshot or page source. Dump error: {dump_e}")
@@ -525,62 +539,102 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
     return int(bioauth_seconds), int(epoch_minutes)
 
 async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Running periodic bioauth check...")
-    state = load_state()
-    now_utc = datetime.now(timezone.utc)
-    driver = context.bot_data.get('selenium_driver')
-    settings = state["notification_settings"]
-    lang = state.get("user_settings", {}).get(str(AUTHORIZED_USER_ID), {}).get("language", "uk")
-
-    if not driver:
-        logger.error("Selenium driver not found for periodic check.")
+    global IS_CHECK_RUNNING
+    if IS_CHECK_RUNNING:
+        logger.info("Skipping periodic check: a previous check is still in progress.")
         return
 
-    for server_id, server_config in SERVERS.items():
-        server_state = state["servers"][server_id]
-        data_retrieved_successfully = False
+    IS_CHECK_RUNNING = True
+    try:
+        logger.info("Running periodic bioauth check...")
+        state = load_state()
+        now_utc = datetime.now(timezone.utc)
+        settings = state["notification_settings"]
+        lang = state.get("user_settings", {}).get(str(AUTHORIZED_USER_ID), {}).get("language", "uk")
 
-        last_check_str = server_state.get("last_full_check_utc")
-        perform_full_check = not last_check_str or (now_utc - datetime.fromisoformat(last_check_str) > timedelta(hours=FULL_CHECK_INTERVAL_HOURS))
+        driver = create_selenium_driver()
+        if not driver:
+            logger.error("Failed to create Selenium driver for periodic check. Skipping this run.")
+            IS_CHECK_RUNNING = False # Make sure to reset the lock
+            return
 
-        if perform_full_check:
-            logger.info(f"Performing full bioauth check for {server_config['name']}.")
-            url = await get_latest_url_from_logs(server_config, lang=lang)
-            if url:
-                bioauth_seconds, _ = await asyncio.to_thread(get_bioauth_and_epoch_times, driver, url)
-                if bioauth_seconds > 0:
-                    deadline = now_utc + timedelta(seconds=bioauth_seconds)
-                    server_state.update({
-                        "bioauth_deadline_utc": deadline.isoformat(), "last_full_check_utc": now_utc.isoformat(),
-                        "notified_first": False, "notified_second": False, "is_in_alert_mode": False,
-                        "is_in_failure_alert_mode": False
-                    })
-                    data_retrieved_successfully = True
+        try:
+            for server_id, server_config in SERVERS.items():
+                server_state = state["servers"][server_id]
+                data_retrieved_successfully = False
+
+                last_check_str = server_state.get("last_full_check_utc")
+                perform_full_check = not last_check_str or (now_utc - datetime.fromisoformat(last_check_str) > timedelta(hours=FULL_CHECK_INTERVAL_HOURS))
+
+                if perform_full_check:
+                    logger.info(f"Performing full bioauth check for {server_config['name']}.")
+                    url = await get_latest_url_from_logs(server_config, lang=lang)
+                    if url:
+                        bioauth_seconds, epoch_minutes = await asyncio.to_thread(get_bioauth_and_epoch_times, driver, url)
+                        
+                        if bioauth_seconds > 0:
+                            deadline = now_utc + timedelta(seconds=bioauth_seconds)
+                            server_state.update({
+                                "bioauth_deadline_utc": deadline.isoformat(), "last_full_check_utc": now_utc.isoformat(),
+                                "notified_first": False, "notified_second": False, "is_in_alert_mode": False,
+                                "is_in_failure_alert_mode": False
+                            })
+                            data_retrieved_successfully = True
+                            logger.info(f"Successfully retrieved bioauth time for {server_config['name']}: {bioauth_seconds}s")
+                        elif bioauth_seconds == -1 and epoch_minutes > -1:
+                            data_retrieved_successfully = True
+                            server_state.update({
+                                "bioauth_deadline_utc": None, "last_full_check_utc": now_utc.isoformat(),
+                                "is_in_failure_alert_mode": False
+                            })
+                            logger.info(f"Successfully checked {server_config['name']}. Bioauth time not present (normal). Epoch minutes: {epoch_minutes}")
+
+                    if data_retrieved_successfully and server_state.get("is_in_failure_alert_mode"):
+                        server_state["is_in_failure_alert_mode"] = False
+                        await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_info_data_retrieval_restored", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
+
+                    if not data_retrieved_successfully:
+                        if not server_state.get("is_in_failure_alert_mode"):
+                            server_state["is_in_failure_alert_mode"] = True
+                            server_state["last_failure_alert_utc"] = now_utc.isoformat()
+                            await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_critical_data_failure", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
+                        else:
+                            last_alert_str = server_state.get("last_failure_alert_utc")
+                            if not last_alert_str or (now_utc - datetime.fromisoformat(last_alert_str) > timedelta(minutes=settings.get("alert_interval_minutes", 5) * 2)):
+                                server_state["last_failure_alert_utc"] = now_utc.isoformat()
+                                await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_critical_data_failure_repeat", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
+
+                deadline_str = server_state.get("bioauth_deadline_utc")
+                if not deadline_str: continue
+
+                deadline = datetime.fromisoformat(deadline_str)
+                time_left = deadline - now_utc
+
+                if time_left.total_seconds() < 0:
+                    if not server_state.get("is_in_alert_mode"):
+                        server_state["is_in_alert_mode"] = True
+                        server_state["last_alert_utc"] = now_utc.isoformat()
+                        await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_alert_bioauth_overdue", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
+                    else:
+                        last_alert_str = server_state.get("last_alert_utc")
+                        if not last_alert_str or (now_utc - datetime.fromisoformat(last_alert_str) > timedelta(minutes=settings.get("alert_interval_minutes", 5))):
+                            server_state["last_alert_utc"] = now_utc.isoformat()
+                            await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_alert_bioauth_overdue_repeat", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
+
+                elif time_left < timedelta(minutes=settings["second_warning_minutes"]) and not server_state.get("notified_second"):
+                    await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_warning_bioauth_soon_second", lang, server_name=server_config['name'], minutes=settings['second_warning_minutes']), parse_mode=ParseMode.HTML)
+                    server_state["notified_second"] = True
+                elif time_left < timedelta(minutes=settings["first_warning_minutes"]) and not server_state.get("notified_first"):
+                    await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_warning_bioauth_soon_first", lang, server_name=server_config['name'], minutes=settings['first_warning_minutes']), parse_mode=ParseMode.HTML)
+                    server_state["notified_first"] = True
+        finally:
+            if driver:
+                driver.quit()
             
-            if not data_retrieved_successfully and not server_state.get("is_in_failure_alert_mode"):
-                server_state["is_in_failure_alert_mode"] = True
-                await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_critical_data_failure", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
-            elif server_state.get("is_in_failure_alert_mode"):
-                 await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_critical_data_failure_repeat", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
-
-        deadline_str = server_state.get("bioauth_deadline_utc")
-        if not deadline_str: continue
-
-        deadline = datetime.fromisoformat(deadline_str)
-        time_left = deadline - now_utc
-
-        if time_left.total_seconds() < 0 and not server_state.get("is_in_alert_mode"):
-            server_state["is_in_alert_mode"] = True
-            await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_alert_bioauth_overdue", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
-        elif time_left < timedelta(minutes=settings["second_warning_minutes"]) and not server_state.get("notified_second"):
-            await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_warning_bioauth_soon_second", lang, server_name=server_config['name'], minutes=settings['second_warning_minutes']), parse_mode=ParseMode.HTML)
-            server_state["notified_second"] = True
-        elif time_left < timedelta(minutes=settings["first_warning_minutes"]) and not server_state.get("notified_first"):
-            await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_warning_bioauth_soon_first", lang, server_name=server_config['name'], minutes=settings['first_warning_minutes']), parse_mode=ParseMode.HTML)
-            server_state["notified_first"] = True
-            
-    state = load_state()
-    save_state(state)
+        save_state(state)
+    finally:
+        IS_CHECK_RUNNING = False
+        logger.info("Periodic check finished.")
 
 @translated_action
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE, lang: str):
@@ -637,13 +691,12 @@ async def handle_generic_action(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     data = query.data
 
+    # Define a mapping from action prefixes to their handler functions.
     action_map = {
-        # Menu navigation
         "action_node_management": node_management_menu,
         "action_tunnel_management": tunnel_management_menu,
         "action_backup_menu": backup_menu,
         "action_restore_menu": restore_menu,
-        # Actions
         "action_get_link": get_link_action,
         "action_get_bioauth_timer": get_bioauth_timer_action,
         "action_view_log": view_log_action,
@@ -665,11 +718,19 @@ async def handle_generic_action(update: Update, context: ContextTypes.DEFAULT_TY
         "action_restore_github_execute": restore_github_db_action,
     }
 
+    # Find the matching handler and extract the server_id
     for prefix, handler in action_map.items():
         if data.startswith(prefix + "_"):
-            server_id = data[len(prefix)+1:]
-            if server_id in SERVERS:
-                await handler(update, context, lang, server_id)
+            # Correctly extract server_id from the callback data
+            try:
+                server_id = data[len(prefix) + 1:]
+                if server_id in SERVERS:
+                    await handler(update, context, lang, server_id)
+                    return
+            except Exception as e:
+                logger.error(f"Error handling action '{data}': {e}", exc_info=True)
+                # Optionally, inform the user that something went wrong
+                await query.edit_message_text(get_text("msg_error_generic", lang))
                 return
 
     logger.warning(f"Unhandled generic action: {data}")
@@ -691,17 +752,21 @@ async def get_bioauth_timer_action(update, context, lang, server_id):
         await query.edit_message_text(get_text("msg_failed_to_get_url", lang))
         return
 
-    driver = context.bot_data.get('selenium_driver')
+    driver = create_selenium_driver()
     if not driver:
         await query.edit_message_text(get_text("msg_error_selenium_not_initialized", lang))
         return
 
-    bioauth_seconds, epoch_minutes = await asyncio.to_thread(get_bioauth_and_epoch_times, driver, url)
+    try:
+        bioauth_seconds, epoch_minutes = await asyncio.to_thread(get_bioauth_and_epoch_times, driver, url)
 
-    bioauth_text = get_text("msg_bioauth_time_left", lang, time=format_seconds_to_hhmmss(bioauth_seconds)) if bioauth_seconds != -1 else get_text("msg_failed_to_get_bioauth_time", lang)
-    epoch_text = get_text("msg_epoch_time_left", lang, minutes=epoch_minutes) if epoch_minutes != -1 else get_text("msg_failed_to_get_epoch_time", lang)
+        bioauth_text = get_text("msg_bioauth_time_left", lang, time=format_seconds_to_hhmmss(bioauth_seconds)) if bioauth_seconds != -1 else get_text("msg_failed_to_get_bioauth_time", lang)
+        epoch_text = get_text("msg_epoch_time_left", lang, minutes=epoch_minutes) if epoch_minutes != -1 else get_text("msg_failed_to_get_epoch_time", lang)
 
-    await query.edit_message_text(f"{bioauth_text}\n{epoch_text}")
+        await query.edit_message_text(f"{bioauth_text}\n{epoch_text}")
+    finally:
+        if driver:
+            driver.quit()
 
 async def view_log_action(update, context, lang, server_id):
     server_name = SERVERS[server_id]['name']
@@ -741,19 +806,9 @@ async def get_node_version_action(update, context, lang, server_id):
     text = get_text("msg_node_version", lang, version=stdout.strip()) if returncode == 0 and stdout.strip() else get_text("msg_failed_to_get_version", lang, error=stderr)
     await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
-def get_config():
-    try:
-        with open('/root/config.json', 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.warning("config.json not found or invalid. Proceeding without auth token.")
-        return {}
-
 async def update_node_action(update, context, lang, server_id):
     server_config = SERVERS[server_id]
     query = update.callback_query
-    config = get_config()
-    github_token = config.get("github_token")
 
     await query.edit_message_text(get_text("msg_checking_latest_release", lang))
     
@@ -768,7 +823,7 @@ async def update_node_action(update, context, lang, server_id):
     temp_archive_path = f"/tmp/{archive_filename}"
     temp_extract_path = "/tmp/humanode-peer-extracted"
 
-    wget_headers = f"--header=\"Authorization: token {github_token}\"" if github_token else ""
+    wget_headers = f"--header=\"Authorization: token {GITHUB_TOKEN}\"" if GITHUB_TOKEN else ""
     wget_cmd = f"wget -q {wget_headers} -O {temp_archive_path} {download_url}"
 
     returncode, _, stderr = await execute_command(server_config, wget_cmd)
@@ -813,11 +868,9 @@ async def update_node_action(update, context, lang, server_id):
 
 def get_latest_release_version() -> tuple[str | None, str | None]:
     url = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/latest"
-    config = get_config()
-    github_token = config.get("github_token")
     headers = {}
-    if github_token:
-        headers["Authorization"] = f"token {github_token}"
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
     try:
         response = requests.get(url, timeout=15, headers=headers)
@@ -852,7 +905,19 @@ async def create_node_db_backup(context, lang, server_id, query) -> str | None:
     if not url:
         await query.edit_message_text(get_text("msg_failed_to_get_url_for_epoch", lang))
         return None
-    _, epoch_minutes = await asyncio.to_thread(get_bioauth_and_epoch_times, context.bot_data['selenium_driver'], url)
+
+    driver = create_selenium_driver()
+    if not driver:
+        await query.edit_message_text(get_text("msg_error_selenium_not_initialized", lang))
+        return None
+
+    epoch_minutes = -1
+    try:
+        _, epoch_minutes = await asyncio.to_thread(get_bioauth_and_epoch_times, driver, url)
+    finally:
+        if driver:
+            driver.quit()
+
     if epoch_minutes == -1:
         await query.edit_message_text(get_text("msg_failed_to_get_epoch_time_backup", lang))
         return None
@@ -860,7 +925,7 @@ async def create_node_db_backup(context, lang, server_id, query) -> str | None:
         await query.edit_message_text(get_text("msg_epoch_ending_soon_backup_cancelled", lang, minutes=epoch_minutes))
         return None
 
-    backup_dir = "/root/humanode_backups"
+    backup_dir = os.path.join(BASE_DIR, "humanode_backups")
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"humanode_db_backup_{server_config['name'].replace(' ', '_')}_{timestamp}.tar"
@@ -908,7 +973,7 @@ async def restore_local_db_action(update, context, lang, server_id):
 
     await query.edit_message_text(get_text("msg_finding_latest_local_backup", lang), parse_mode=ParseMode.HTML)
     
-    backup_dir = "/root/humanode_backups"
+    backup_dir = os.path.join(BASE_DIR, "humanode_backups")
     list_of_files = glob.glob(f'{backup_dir}/*.tar')
     if not list_of_files:
         await query.edit_message_text(get_text("msg_no_local_backups_found", lang, path=backup_dir), parse_mode=ParseMode.HTML)
@@ -949,9 +1014,7 @@ def get_latest_snapshot_from_github() -> list[dict] | None:
     Handles both single .tar.gz files and multi-part archives (.part-aa, .part-ab, etc.).
     """
     try:
-        config = get_config()
-        github_token = config.get("github_token")
-        headers = {"Authorization": f"token {github_token}"} if github_token else {}
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
         
         response = requests.get(GITHUB_SNAPSHOT_URL, timeout=15, headers=headers)
         response.raise_for_status()
@@ -1072,14 +1135,19 @@ async def get_element_screenshot_action(update, context, lang, server_id):
 
     await query.edit_message_text(get_text("msg_taking_element_screenshot", lang, server_name=server_name))
     
-    driver = context.bot_data.get('selenium_driver')
+    driver = create_selenium_driver()
     if not driver:
         await query.edit_message_text(get_text("msg_error_selenium_not_initialized", lang))
         return
 
-    screenshot_path = await asyncio.to_thread(
-        take_element_screenshot, driver, url, "//div[contains(@class, 'css-ak0d3g')]"
-    )
+    screenshot_path = None
+    try:
+        screenshot_path = await asyncio.to_thread(
+            take_element_screenshot, driver, url, "//div[contains(@class, 'css-ak0d3g')]"
+        )
+    finally:
+        if driver:
+            driver.quit()
     
     if screenshot_path and os.path.exists(screenshot_path):
         try:
@@ -1095,18 +1163,30 @@ async def get_element_screenshot_action(update, context, lang, server_id):
         await query.edit_message_text(get_text("msg_failed_to_take_screenshot", lang))
 
 def take_element_screenshot(driver: webdriver.Chrome, url: str, xpath: str) -> str | None:
-    screenshot_path = "/root/element_screenshot.png"
+    screenshot_path = os.path.join(BASE_DIR, "element_screenshot.png")
     try:
-        wait = WebDriverWait(driver, 30)
+        wait = WebDriverWait(driver, 90) # Increased wait time to 90s
         driver.get(url)
-        wait.until(EC.element_to_be_clickable((By.XPATH, "//div[@role='button' and contains(., 'Dashboard')]" ))).click()
-        time.sleep(5)
+        
+        # Wait for dashboard to be clickable and click it
+        dashboard_button_xpath = "//div[@role='button' and contains(., 'Dashboard')]"
+        wait.until(EC.element_to_be_clickable((By.XPATH, dashboard_button_xpath))).click()
+        
+        # Wait for the target element to be visible instead of a fixed sleep
         element_to_capture = wait.until(EC.visibility_of_element_located((By.XPATH, xpath)))
+        
+        # A small extra delay can sometimes help ensure everything is rendered
+        time.sleep(10) 
+        
         element_to_capture.screenshot(screenshot_path)
+        logger.info(f"Successfully captured element screenshot to {screenshot_path}")
         return screenshot_path
     except Exception as e:
         logger.error(f"Failed to take element screenshot: {e}", exc_info=True)
-        driver.save_screenshot("/root/selenium_error_screenshot_element.png")
+        try:
+            driver.save_screenshot(os.path.join(BASE_DIR, "selenium_error_screenshot_element.png"))
+        except Exception as dump_e:
+            logger.error(f"Failed to save error screenshot: {dump_e}")
         return None
 
 # --- Add Server Conversation ---
@@ -1197,6 +1277,10 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 def main():
+    if not TOKEN or not AUTHORIZED_USER_ID:
+        logger.critical("CRITICAL: Bot TOKEN or AUTHORIZED_USER_ID is not configured in config.json. Exiting.")
+        return
+
     logger.info(f"Starting bot version: {BOT_VERSION}")
     load_translations()
 
@@ -1205,22 +1289,9 @@ def main():
             BotCommand("/start", "Start the bot"),
             BotCommand("/menu", "Show the main menu"),
         ])
-        options = webdriver.ChromeOptions()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--window-size=1920,1080")
-        service = ChromeService(ChromeDriverManager().install())
-        application.bot_data['selenium_driver'] = webdriver.Chrome(service=service, options=options)
-        logger.info("Selenium driver initialized.")
         application.job_queue.run_repeating(periodic_bioauth_check, interval=timedelta(minutes=JOB_QUEUE_INTERVAL_MINUTES), first=10)
 
-    async def on_shutdown(application: Application):
-        if 'selenium_driver' in application.bot_data and application.bot_data['selenium_driver']:
-            logger.info("Closing Selenium driver.")
-            application.bot_data['selenium_driver'].quit()
-
-    application = Application.builder().token(TOKEN).post_init(post_init).post_shutdown(on_shutdown).build()
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
 
     settings_conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(edit_setting_prompt, pattern=r"^edit_setting_")],
