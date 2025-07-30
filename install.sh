@@ -21,7 +21,7 @@ setup_texts() {
         TEXTS[dep_installing]="Встановлюю відсутні залежності..."
         TEXTS[dep_manual_install]="Будь ласка, встановіть їх вручну (напр., 'sudo apt update && sudo apt install -y %s')."
         TEXTS[dep_ok]="Усі залежності встановлено."
-        TEXTS[install_dir_prompt]="Введіть директорію для встановлення [за замовчуванням: /opt/humanode-bot]: "
+        TEXTS[install_dir_prompt]="Введіть директорію для встановлення [за замовчуванням: $HOME/humanode-bot]: "
         TEXTS[sudo_needed]="Для встановлення в %s потрібні права адміністратора (sudo)."
         TEXTS[cloning_repo]="Клоную репозиторій в %s..."
         TEXTS[repo_exists]="Директорія %s вже існує. Оновлюю з GitHub..."
@@ -57,7 +57,7 @@ setup_texts() {
         TEXTS[dep_installing]="Installing missing dependencies..."
         TEXTS[dep_manual_install]="Please install them manually (e.g., 'sudo apt update && sudo apt install -y %s')."
         TEXTS[dep_ok]="All dependencies are installed."
-        TEXTS[install_dir_prompt]="Enter the installation directory [default: /opt/humanode-bot]: "
+        TEXTS[install_dir_prompt]="Enter the installation directory [default: $HOME/humanode-bot]: "
         TEXTS[sudo_needed]="Administrator privileges (sudo) are required to install to %s."
         TEXTS[cloning_repo]="Cloning repository into %s..."
         TEXTS[repo_exists]="Directory %s already exists. Pulling updates from GitHub..."
@@ -154,20 +154,39 @@ main() {
     success "${TEXTS[dep_ok]}"
 
     # 3. Get Installation Directory
+    local default_install_dir="$HOME/humanode-bot"
     read -p "${TEXTS[install_dir_prompt]}" INSTALL_DIR
-    INSTALL_DIR=${INSTALL_DIR:-/opt/humanode-bot}
+    INSTALL_DIR=${INSTALL_DIR:-$default_install_dir}
     
-    # Convert to absolute path
-    INSTALL_DIR=$(readlink -f "$INSTALL_DIR")
+    # Expand tilde manually in case user entered it
+    INSTALL_DIR="${INSTALL_DIR/#\~/$HOME}"
 
-    # Check if sudo is needed and available
-    if [[ ! -w "$(dirname "$INSTALL_DIR")" ]] && [[ "$EUID" -ne 0 ]]; then
+    # Check if sudo is needed before creating directory
+    local check_dir="$INSTALL_DIR"
+    # Find the top-most non-existent directory's parent
+    while [ ! -d "$check_dir" ]; do
+        local parent
+        parent=$(dirname "$check_dir")
+        if [ "$parent" == "$check_dir" ]; then # Reached root
+            check_dir="/"
+            break
+        fi
+        check_dir=$parent
+    done
+
+    if [[ ! -w "$check_dir" ]] && [[ "$EUID" -ne 0 ]]; then
         info "$(printf "${TEXTS[sudo_needed]}" "$INSTALL_DIR")"
         if ! command -v sudo &> /dev/null; then
             error "sudo command not found, but required to install in $INSTALL_DIR"
         fi
         SUDO_CMD="sudo"
     fi
+
+    # Create the directory using sudo if needed
+    $SUDO_CMD mkdir -p "$INSTALL_DIR"
+    
+    # Convert to absolute path, which now must exist
+    INSTALL_DIR=$(readlink -f "$INSTALL_DIR")
 
     # 4. Clone or Update Repository
     local repo_url="https://github.com/stalkerSumy/humanode-telegram-bot.git"
@@ -179,7 +198,7 @@ main() {
         $SUDO_CMD env GIT_TERMINAL_PROMPT=0 git pull
     else
         info "$(printf "${TEXTS[cloning_repo]}" "$INSTALL_DIR")"
-        $SUDO_CMD mkdir -p "$INSTALL_DIR"
+        # The directory is already created above
         local tmp_dir; tmp_dir=$(mktemp -d)
         env GIT_TERMINAL_PROMPT=0 git clone "$repo_url" "$tmp_dir"
         $SUDO_CMD rsync -a "$tmp_dir/" "$INSTALL_DIR/"
@@ -244,7 +263,10 @@ main() {
 
     # 7. Set ownership
     if [ -n "$SUDO_CMD" ]; then
-        $SUDO_CMD chown -R "$(whoami):$(id -gn)" "$INSTALL_DIR"
+        # We need to get the original user if sudo was used
+        local owner_user="${SUDO_USER:-$(whoami)}"
+        local owner_group=$(id -gn "$owner_user")
+        $SUDO_CMD chown -R "$owner_user:$owner_group" "$INSTALL_DIR"
     fi
 
     # 8. Setup systemd Service
@@ -257,8 +279,8 @@ Description=Humanode Management Bot
 After=network.target
 
 [Service]
-User=$(whoami)
-Group=$(id -gn)
+User=${SUDO_USER:-$(whoami)}
+Group=$(id -gn "${SUDO_USER:-$(whoami)}")
 WorkingDirectory=$bot_dir
 ExecStart=$venv_dir/bin/python3 $bot_dir/humanode_bot.py
 Restart=always
