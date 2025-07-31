@@ -939,7 +939,7 @@ async def create_node_db_backup(context, lang, server_id, query) -> str | None:
         return None
 
     await query.edit_message_text(get_text("msg_creating_db_archive", lang))
-    tar_command = f"tar -cf {backup_path} -C {os.path.dirname(db_path)} {os.path.basename(db_path)}"
+    tar_command = f"tar -cf {shlex.quote(backup_path)} -C {os.path.dirname(db_path)} {os.path.basename(db_path)}"
     returncode, _, stderr = await execute_command(server_config, tar_command)
     
     await query.edit_message_text(get_text("msg_starting_node_after_backup", lang, server_name=server_config['name']))
