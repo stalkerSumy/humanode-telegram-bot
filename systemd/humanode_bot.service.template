@@ -1,0 +1,16 @@
+[Unit]
+Description=Humanode Telegram Bot
+After=network.target
+
+[Service]
+User={{USER}}
+Group={{GROUP}}
+WorkingDirectory={{WORKING_DIRECTORY}}
+ExecStart={{EXEC_START}}
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
