@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Humanode Bot Universal Installer v3.0
+# Humanode Bot Universal Installer v3.1
 # An interactive script that automates the entire setup process.
 
 # --- Stop on any error ---
@@ -17,7 +17,7 @@ declare -A TEXTS
 setup_texts() {
     local lang=$1
     if [[ "$lang" == "ua" ]]; then
-        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.0 \n================================================="
+        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.1 \n================================================="
         TEXTS[root_needed]="Для коректної роботи інсталятора потрібні права адміністратора. Будь ласка, запустіть його через 'sudo'."
         TEXTS[dep_check]="Перевірка та встановлення системних залежностей..."
         TEXTS[dep_ok]="Системні залежності встановлено."
@@ -48,7 +48,7 @@ setup_texts() {
         TEXTS[logs_cmd]="Щоб переглянути логи, виконайте: sudo journalctl -u humanode_bot -f"
         TEXTS[start_convo]="Знайдіть вашого бота в Telegram і надішліть команду /start."
     else # English
-        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.0 \n============================================="
+        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.1 \n=============================================="
         TEXTS[root_needed]="This installer requires root privileges to run correctly. Please execute it with 'sudo'."
         TEXTS[dep_check]="Checking and installing system dependencies..."
         TEXTS[dep_ok]="System dependencies are installed."
@@ -107,8 +107,9 @@ prompt_for_input() {
 pre_flight_checks() {
     if [[ "$EUID" -ne 0 ]]; then error "${TEXTS[root_needed]}"; fi
     info "${TEXTS[dep_check]}"
+    # Added jq to the list of dependencies
     apt-get update -y > /dev/null
-    apt-get install -y git python3 python3-venv curl tesseract-ocr wget > /dev/null
+    apt-get install -y git python3 python3-venv curl tesseract-ocr wget jq > /dev/null
     success "${TEXTS[dep_ok]}"
 
     info "${TEXTS[chrome_check]}"
