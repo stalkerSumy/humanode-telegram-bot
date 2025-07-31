@@ -13,31 +13,41 @@ This is a Telegram bot for managing and monitoring your Humanode nodes, featurin
 
 ---
 
-## 🚀 One-Liner Installation
+## 🚀 Automated Installation
 
-To install the bot, simply run the following command with `sudo`. It will handle all dependencies, ask you for configuration details, and set up the bot as a system service.
+The installation is handled by an interactive script. It will guide you through the setup, ask for configuration details, and set up the bot as a system service.
 
+**1. Download the Installer:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh | sudo bash
+curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh
 ```
 
-The installer will guide you through setting up your bot token, user ID, and your first server.
+**2. Run the Installer:**
+```bash
+sudo bash install.sh
+```
 
 ---
 
-## 🗑️ One-Liner Uninstallation
+## 🗑️ Automated Uninstallation
 
-If you want to completely remove the bot and its configuration from your system, run this command:
+To completely remove the bot and its configuration from your system, use the uninstaller script.
 
+**1. Download the Uninstaller:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh | sudo bash
+curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh
+```
+
+**2. Run the Uninstaller:**
+```bash
+sudo bash uninstall.sh
 ```
 
 ---
 
 ## 🛠️ Managing the Bot Service
 
-The bot runs as a `systemd` service, which means it will start automatically on system boot. You can manage it with standard `systemctl` commands:
+The bot runs as a `systemd` service. You can manage it with standard `systemctl` commands:
 
 *   **Check the status:**
     ```bash
