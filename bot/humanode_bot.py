@@ -38,41 +38,15 @@ import io
 
 # --- Constants ---
 BOT_VERSION = "1.3.5" # Incremented version
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-STATE_FILE = os.path.join(BASE_DIR, "bot_state.json")
-SERVERS_CONFIG_FILE = os.path.join(BASE_DIR, "servers.json")
-LOG_FILE = os.path.join(BASE_DIR, "humanode_bot.log")
-LOCALES_DIR = os.path.join(BASE_DIR, "locales")
+TOKEN = "DUMMY_TOKEN"
+AUTHORIZED_USER_ID = DUMMY_USER_ID
+STATE_FILE = "/root/bot_state.json"
+LOG_FILE = "humanode_bot.log"
 FULL_CHECK_INTERVAL_HOURS = 168
 JOB_QUEUE_INTERVAL_MINUTES = 5
+LOCALES_DIR = "locales"
 GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
-
-# --- Config Loading ---
-def load_config():
-    """Loads config from config.json."""
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-            print("Successfully loaded config.json.")
-            return config
-    except FileNotFoundError:
-        print(f"CRITICAL: {CONFIG_FILE} not found. Please create it with your bot token and user ID.")
-        return {}
-    except json.JSONDecodeError:
-        print(f"CRITICAL: Could not decode {CONFIG_FILE}. Please check its format.")
-        return {}
-    except Exception as e:
-        print(f"CRITICAL: An unexpected error occurred while loading config.json: {e}")
-        return {}
-
-config = load_config()
-TOKEN = config.get("telegram_bot_token")
-AUTHORIZED_USER_ID = config.get("authorized_user_id")
-if isinstance(AUTHORIZED_USER_ID, str) and AUTHORIZED_USER_ID.isdigit():
-    AUTHORIZED_USER_ID = int(AUTHORIZED_USER_ID)
-GITHUB_TOKEN = config.get("github_token")
-
+SERVERS_CONFIG_FILE = "/root/servers.json"
 
 # --- Global Lock ---
 IS_CHECK_RUNNING = False
@@ -480,12 +454,12 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
 
         # This is the most reliable way: wait for the dashboard button to be clickable.
         # This single wait handles both fast and slow page loads.
-        dashboard_accordion_xpath = "//span[contains(text(), 'Dashboard')]/ancestor::div[contains(@class, 'MuiAccordionSummary-root')]";
+        dashboard_accordion_xpath = "//span[contains(text(), 'Dashboard')]/ancestor::div[contains(@class, 'MuiAccordionSummary-root')]"
         logger.info("Waiting for the dashboard to be clickable...")
         wait.until(EC.element_to_be_clickable((By.XPATH, dashboard_accordion_xpath))).click()
         logger.info("Dashboard clicked.")
 
-        timers_container_xpath = "//div[contains(@class, 'MuiAccordionDetails-root')]//div[contains(@class, 'css-ak0d3g')]";
+        timers_container_xpath = "//div[contains(@class, 'MuiAccordionDetails-root')]//div[contains(@class, 'css-ak0d3g')]"
         timers_container = wait.until(EC.visibility_of_element_located((By.XPATH, timers_container_xpath)))
         
         # EXPERIMENT: Instead of waiting for a specific element, we use a fixed
@@ -517,7 +491,7 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
         else:
             logger.warning("Could not parse Epoch time from OCR text. Checking for progress bar as a fallback.")
             try:
-                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@class, 'MuiLinearProgress-bar')]";
+                epoch_progress_xpath = ".//p[contains(text(), 'Epoch')]/following-sibling::div//div[contains(@class, 'MuiLinearProgress-bar')]"
                 epoch_element = timers_container.find_element(By.XPATH, epoch_progress_xpath)
                 if epoch_element:
                     style_attribute = epoch_element.get_attribute("style")
@@ -529,8 +503,8 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
     except Exception as e:
         logger.error("An exception occurred in get_bioauth_and_epoch_times.", exc_info=True)
         try:
-            driver.save_screenshot(os.path.join(BASE_DIR, "selenium_error_ocr.png"))
-            with open(os.path.join(BASE_DIR, "selenium_page_source_ocr.html"), "w", encoding="utf-8") as f:
+            driver.save_screenshot("/root/selenium_error_ocr.png")
+            with open("/root/selenium_page_source_ocr.html", "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
         except Exception as dump_e:
             logger.error(f"Failed to save screenshot or page source. Dump error: {dump_e}")
@@ -806,10 +780,18 @@ async def get_node_version_action(update, context, lang, server_id):
     text = get_text("msg_node_version", lang, version=stdout.strip()) if returncode == 0 and stdout.strip() else get_text("msg_failed_to_get_version", lang, error=stderr)
     await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
+def get_config():
+    try:
+        with open('/root/config.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.warning("config.json not found or invalid. Proceeding without auth token.")
+        return {}
+
 async def update_node_action(update, context, lang, server_id):
     server_config = SERVERS[server_id]
     query = update.callback_query
-
+    
     await query.edit_message_text(get_text("msg_checking_latest_release", lang))
     
     latest_tag, download_url = await asyncio.to_thread(get_latest_release_version)
@@ -823,8 +805,7 @@ async def update_node_action(update, context, lang, server_id):
     temp_archive_path = f"/tmp/{archive_filename}"
     temp_extract_path = "/tmp/humanode-peer-extracted"
 
-    wget_headers = f"--header=\"Authorization: token {GITHUB_TOKEN}\"" if GITHUB_TOKEN else ""
-    wget_cmd = f"wget -q {wget_headers} -O {temp_archive_path} {download_url}"
+    wget_cmd = f"wget -q -O {temp_archive_path} {download_url}"
 
     returncode, _, stderr = await execute_command(server_config, wget_cmd)
     if returncode != 0:
@@ -868,12 +849,9 @@ async def update_node_action(update, context, lang, server_id):
 
 def get_latest_release_version() -> tuple[str | None, str | None]:
     url = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/latest"
-    headers = {}
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"token {GITHUB_TOKEN}"
-
+    
     try:
-        response = requests.get(url, timeout=15, headers=headers)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
         latest_version = data.get("tag_name")
@@ -925,7 +903,7 @@ async def create_node_db_backup(context, lang, server_id, query) -> str | None:
         await query.edit_message_text(get_text("msg_epoch_ending_soon_backup_cancelled", lang, minutes=epoch_minutes))
         return None
 
-    backup_dir = os.path.join(BASE_DIR, "humanode_backups")
+    backup_dir = "/root/humanode_backups"
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"humanode_db_backup_{server_config['name'].replace(' ', '_')}_{timestamp}.tar"
@@ -973,7 +951,7 @@ async def restore_local_db_action(update, context, lang, server_id):
 
     await query.edit_message_text(get_text("msg_finding_latest_local_backup", lang), parse_mode=ParseMode.HTML)
     
-    backup_dir = os.path.join(BASE_DIR, "humanode_backups")
+    backup_dir = "/root/humanode_backups"
     list_of_files = glob.glob(f'{backup_dir}/*.tar')
     if not list_of_files:
         await query.edit_message_text(get_text("msg_no_local_backups_found", lang, path=backup_dir), parse_mode=ParseMode.HTML)
@@ -1014,7 +992,9 @@ def get_latest_snapshot_from_github() -> list[dict] | None:
     Handles both single .tar.gz files and multi-part archives (.part-aa, .part-ab, etc.).
     """
     try:
-        headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
+        config = get_config()
+        github_token = config.get("github_token")
+        headers = {"Authorization": f"token {github_token}"} if github_token else {}
         
         response = requests.get(GITHUB_SNAPSHOT_URL, timeout=15, headers=headers)
         response.raise_for_status()
@@ -1163,7 +1143,7 @@ async def get_element_screenshot_action(update, context, lang, server_id):
         await query.edit_message_text(get_text("msg_failed_to_take_screenshot", lang))
 
 def take_element_screenshot(driver: webdriver.Chrome, url: str, xpath: str) -> str | None:
-    screenshot_path = os.path.join(BASE_DIR, "element_screenshot.png")
+    screenshot_path = "/root/element_screenshot.png"
     try:
         wait = WebDriverWait(driver, 90) # Increased wait time to 90s
         driver.get(url)
@@ -1184,7 +1164,7 @@ def take_element_screenshot(driver: webdriver.Chrome, url: str, xpath: str) -> s
     except Exception as e:
         logger.error(f"Failed to take element screenshot: {e}", exc_info=True)
         try:
-            driver.save_screenshot(os.path.join(BASE_DIR, "selenium_error_screenshot_element.png"))
+            driver.save_screenshot("/root/selenium_error_screenshot_element.png")
         except Exception as dump_e:
             logger.error(f"Failed to save error screenshot: {dump_e}")
         return None
@@ -1277,10 +1257,6 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 def main():
-    if not TOKEN or not AUTHORIZED_USER_ID:
-        logger.critical("CRITICAL: Bot TOKEN or AUTHORIZED_USER_ID is not configured in config.json. Exiting.")
-        return
-
     logger.info(f"Starting bot version: {BOT_VERSION}")
     load_translations()
 

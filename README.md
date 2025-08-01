@@ -17,14 +17,9 @@ This is a Telegram bot for managing and monitoring your Humanode nodes, featurin
 
 The installation is handled by an interactive script. It will guide you through the setup, ask for configuration details, and set up the bot as a system service.
 
-**1. Download the Installer:**
+**To install, run the following command:**
 ```bash
-curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh
-```
-
-**2. Run the Installer:**
-```bash
-sudo bash install.sh
+curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh && sudo bash install.sh
 ```
 
 ---
@@ -33,14 +28,9 @@ sudo bash install.sh
 
 To completely remove the bot and its configuration from your system, use the uninstaller script.
 
-**1. Download the Uninstaller:**
+**To uninstall, run the following command:**
 ```bash
-curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh
-```
-
-**2. Run the Uninstaller:**
-```bash
-sudo bash uninstall.sh
+curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh && sudo bash uninstall.sh
 ```
 
 ---
