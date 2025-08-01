@@ -19,7 +19,7 @@ The installation is handled by an interactive script. It will guide you through 
 
 **To install, run the following command:**
 ```bash
-curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh && sudo bash install.sh
+bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/install.sh)
 ```
 
 ---
@@ -30,7 +30,7 @@ To completely remove the bot and its configuration from your system, use the uni
 
 **To uninstall, run the following command:**
 ```bash
-curl -sSLO https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh && sudo bash uninstall.sh
+bash <(curl -sSL https://raw.githubusercontent.com/stalkerSumy/humanode-telegram-bot/main/uninstall.sh)
 ```
 
 ---
