@@ -6,7 +6,7 @@ After=network.target
 User=root
 Group=root
 WorkingDirectory=__HUMANODE_HOME__
-ExecStart=__HUMANODE_BINARY_PATH__ --base-path __HUMANODE_DATA_PATH__ --name __NODE_NAME__ --chain __CHAINSPEC_PATH__ --rpc-cors all --rpc-url-ngrok-detect --validator
+ExecStart=__HUMANODE_BINARY_PATH__ --base-path __HUMANODE_DATA_PATH__/substrate-data --chain __HUMANODE_HOME__/chainspec.json --rpc-cors all --name "__NODE_NAME__" --rpc-url-ngrok-detect --validator
 Restart=always
 RestartSec=10
 

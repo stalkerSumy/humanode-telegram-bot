@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Humanode Bot Universal Installer v3.3
+# Humanode Bot Universal Installer v3.4
 # An interactive script that automates the entire setup process,
 # including the creation of systemd services for the node and tunnel using project-specific templates.
 
@@ -19,7 +19,7 @@ declare -A TEXTS
 setup_texts() {
     local lang=$1
     if [[ "$lang" == "ua" ]]; then
-        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.3 \n================================================="
+        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.4 \n================================================="
         TEXTS[root_needed]="Для коректної роботи інсталятора потрібні права адміністратора. Будь ласка, запустіть його через 'sudo'."
         TEXTS[dep_check]="Перевірка та встановлення системних залежностей..."
         TEXTS[dep_ok]="Системні залежності встановлено."
@@ -55,7 +55,7 @@ setup_texts() {
         TEXTS[logs_cmd]="Щоб переглянути логи, виконайте: sudo journalctl -u humanode_bot -f"
         TEXTS[start_convo]="Знайдіть вашого бота в Telegram і надішліть команду /start, щоб почати керувати вашими нодами."
     else # English
-        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.3 \n============================================="
+        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.4 \n============================================="
         TEXTS[root_needed]="This installer requires root privileges to run correctly. Please execute it with 'sudo'."
         TEXTS[dep_check]="Checking and installing system dependencies..."
         TEXTS[dep_ok]="System dependencies are installed."
@@ -95,7 +95,7 @@ setup_texts() {
 
 # --- Helper Functions ---
 info() { echo -e "\033[0;34mINFO:\033[0m $1"; }
-success() { echo -e "\033[0;32mSUCCESS:\033[0m $1"; }
+success() { echo -e "\033[0;32mSUCCESS:\03S[0m $1"; }
 error() { echo -e "\033[0;31mERROR:\033[0m $1" >&2; exit 1; }
 prompt_for_input() {
     local prompt_text="$1"
@@ -211,12 +211,12 @@ setup_node_services() {
     # 1. Prompt for Node Name
     prompt_for_input "${TEXTS[node_name_prompt]}" NODE_NAME
 
-    # 2. Define paths
+    # 2. Define paths based on your working configuration
     local humanode_home="/root/.humanode/workspaces/default"
     local peer_binary_path="$humanode_home/humanode-peer"
     local tunnel_binary_path="$humanode_home/humanode-websocket-tunnel"
-    local data_path="$humanode_home"
-    local chainspec_path="/root/chainspec.json"
+    # Corrected data path to include 'substrate-data'
+    local data_path="$humanode_home" 
 
     # 3. Create humanode-peer.service from template
     info "${TEXTS[node_service_creating]}"
@@ -224,7 +224,6 @@ setup_node_services() {
         -e "s|__HUMANODE_BINARY_PATH__|$peer_binary_path|g" \
         -e "s|__HUMANODE_DATA_PATH__|$data_path|g" \
         -e "s|__NODE_NAME__|$NODE_NAME|g" \
-        -e "s|__CHAINSPEC_PATH__|$chainspec_path|g" \
         "$SYSTEMD_DIR/humanode-peer.service.template" > "/etc/systemd/system/humanode-peer.service"
 
     # 4. Create humanode-websocket-tunnel.service from template

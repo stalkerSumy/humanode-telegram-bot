@@ -1,6 +1,7 @@
 [Unit]
 Description=Humanode WebSocket Tunnel
-After=network.target
+# This service should start AFTER the main humanode-peer service is running.
+After=humanode-peer.service
 Requires=humanode-peer.service
 
 [Service]
@@ -10,6 +11,9 @@ WorkingDirectory=__HUMANODE_HOME__
 ExecStart=__HUMANODE_TUNNEL_BINARY_PATH__
 Restart=always
 RestartSec=10
+# These environment variables are crucial for the tunnel to connect.
+Environment="TUNNEL_SERVER_ADDR=main.ws-tunnel.humanode.io:8000"
+Environment="TUNNEL_SERVER_IP_FAMILY=IPv4"
 
 [Install]
 WantedBy=multi-user.target
