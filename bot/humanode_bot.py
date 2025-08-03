@@ -38,36 +38,15 @@ import io
 
 # --- Constants ---
 BOT_VERSION = "1.3.5" # Incremented version
-
-def get_config_from_file():
-    try:
-        # Assuming config.json is in the parent directory of the bot script.
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(script_dir, '..', 'config.json')
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.critical(f"CRITICAL: Could not load or parse config.json from {config_path}: {e}")
-        return {}
-
-config = get_config_from_file()
-TOKEN = config.get("telegram_token")
-AUTHORIZED_USER_ID = int(config.get("authorized_user_id")) if config.get("authorized_user_id") else None
-
-if not TOKEN or not AUTHORIZED_USER_ID:
-    logger.critical("CRITICAL: telegram_token and authorized_user_id must be set in config.json")
-    exit(1) # Exit if config is missing
-
-STATE_FILE = "/root/bot_state.json"
-LOG_FILE = "humanode_bot.log"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+STATE_FILE = os.path.join(BASE_DIR, "bot_state.json")
+SERVERS_CONFIG_FILE = os.path.join(BASE_DIR, "servers.json")
+LOG_FILE = os.path.join(BASE_DIR, "humanode_bot.log")
+LOCALES_DIR = os.path.join(BASE_DIR, "locales")
+GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
 FULL_CHECK_INTERVAL_HOURS = 168
 JOB_QUEUE_INTERVAL_MINUTES = 5
-LOCALES_DIR = "locales"
-GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
-SERVERS_CONFIG_FILE = "/root/servers.json"
-
-# --- Global Lock ---
-IS_CHECK_RUNNING = False
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -81,6 +60,38 @@ logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("selenium").setLevel(logging.WARNING)
 logging.getLogger("webdriver_manager").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+# --- Config Loading ---
+def load_config():
+    """Loads config from config.json."""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+            logger.info("Successfully loaded config.json.")
+            return config
+    except FileNotFoundError:
+        logger.critical(f"CRITICAL: {CONFIG_FILE} not found. Please create it using the installer.")
+        return {}
+    except json.JSONDecodeError:
+        logger.critical(f"CRITICAL: Could not decode {CONFIG_FILE}. Please check its format.")
+        return {}
+    except Exception as e:
+        logger.critical(f"CRITICAL: An unexpected error occurred while loading config.json: {e}")
+        return {}
+
+config = load_config()
+TOKEN = config.get("telegram_bot_token")
+AUTHORIZED_USER_ID = config.get("authorized_user_id")
+if isinstance(AUTHORIZED_USER_ID, str) and AUTHORIZED_USER_ID.isdigit():
+    AUTHORIZED_USER_ID = int(AUTHORIZED_USER_ID)
+GITHUB_TOKEN = config.get("github_token")
+
+if not TOKEN or not AUTHORIZED_USER_ID:
+    logger.critical("CRITICAL: telegram_token and authorized_user_id must be set in config.json. Exiting.")
+    exit(1)
+
+# --- Global Lock ---
+IS_CHECK_RUNNING = False
 
 # --- Internationalization (i18n) ---
 translations = {}
