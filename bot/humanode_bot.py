@@ -1334,3 +1334,5 @@ if __name__ == "__main__":
         logger.info("Bot stopped by user.")
     except Exception as e:
         logger.error(f"Bot crashed with an unhandled exception: {e}", exc_info=True)
+    finally:
+        logger.info("!!!!!!!! SCRIPT IS EXITING !!!!!!!!")
