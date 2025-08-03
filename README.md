@@ -13,6 +13,24 @@ This is a Telegram bot for managing and monitoring your Humanode nodes, featurin
 
 ---
 
+## 📸 Screenshots
+
+Here is a glimpse of the bot's interface in action.
+
+| Main Menu | Server Management |
+| :---: | :---: |
+| ![Main Menu](screenshots/photo_1_2025-07-30_14-06-47.jpg) | ![Server Management](screenshots/photo_2_2025-07-30_14-06-47.jpg) |
+
+| Node Management | Backup & Restore |
+| :---: | :---: |
+| ![Node Management](screenshots/photo_3_2025-07-30_14-06-47.jpg) | ![Backup & Restore](screenshots/photo_4_2025-07-30_14-06-47.jpg) |
+
+| Bio-authentication Timer |
+| :---: |
+| ![Bio-authentication Timer](screenshots/photo_5_2025-07-30_14-06-58.jpg) |
+
+---
+
 ## 🚀 Automated Installation
 
 The installation is handled by an interactive script. It will guide you through the setup, ask for configuration details, and set up the bot as a system service.
