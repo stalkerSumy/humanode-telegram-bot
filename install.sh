@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Humanode Bot Universal Installer v3.2
+# Humanode Bot Universal Installer v3.3
 # An interactive script that automates the entire setup process,
-# including the creation of systemd services for the node and tunnel.
+# including the creation of systemd services for the node and tunnel using project-specific templates.
 
 # --- Stop on any error ---
 set -e
@@ -11,6 +11,7 @@ set -e
 INSTALL_DIR="/opt/humanode-bot"
 BOT_DIR="$INSTALL_DIR/bot"
 VENV_DIR="$INSTALL_DIR/venv"
+SYSTEMD_DIR="$INSTALL_DIR/systemd"
 
 # --- Language Strings ---
 declare -A TEXTS
@@ -18,7 +19,7 @@ declare -A TEXTS
 setup_texts() {
     local lang=$1
     if [[ "$lang" == "ua" ]]; then
-        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.2 \n================================================="
+        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.3 \n================================================="
         TEXTS[root_needed]="Для коректної роботи інсталятора потрібні права адміністратора. Будь ласка, запустіть його через 'sudo'."
         TEXTS[dep_check]="Перевірка та встановлення системних залежностей..."
         TEXTS[dep_ok]="Системні залежності встановлено."
@@ -44,19 +45,17 @@ setup_texts() {
         TEXTS[req_installing]="Встановлюю залежності Python..."
         TEXTS[systemd_setup]="Налаштовую службу systemd для автозапуску бота..."
         TEXTS[systemd_done]="Службу бота налаштовано та запущено."
-        TEXTS[node_services_setup]="Налаштування сервісів для ноди та тунелю..."
+        TEXTS[node_services_setup]="Налаштування сервісів для ноди та тунелю за допомогою шаблонів..."
         TEXTS[node_name_prompt]="Введіть унікальне ім'я для вашої ноди (без пробілів, напр., MySuperNode): "
-        TEXTS[cloudflared_check]="Перевірка наявності cloudflared..."
-        TEXTS[cloudflared_missing]="'cloudflared' не знайдено. Будь ласка, встановіть його та запустіть інсталятор знову. \nІнструкції: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/installation/"
-        TEXTS[node_service_created]="Сервіс 'humanode-peer.service' створено."
-        TEXTS[tunnel_service_created]="Сервіс 'humanode-websocket-tunnel.service' створено."
+        TEXTS[node_service_creating]="Створюю сервіс 'humanode-peer.service'..."
+        TEXTS[tunnel_service_creating]="Створюю сервіс 'humanode-websocket-tunnel.service'..."
         TEXTS[services_enabled]="Сервіси ноди та тунелю увімкнено для автозапуску."
         TEXTS[install_complete]="=================================\n  Встановлення завершено!  \n================================="
         TEXTS[status_cmd]="Щоб перевірити статус бота, виконайте: sudo systemctl status humanode_bot"
         TEXTS[logs_cmd]="Щоб переглянути логи, виконайте: sudo journalctl -u humanode_bot -f"
         TEXTS[start_convo]="Знайдіть вашого бота в Telegram і надішліть команду /start, щоб почати керувати вашими нодами."
     else # English
-        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.2 \n=============================================="
+        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.3 \n============================================="
         TEXTS[root_needed]="This installer requires root privileges to run correctly. Please execute it with 'sudo'."
         TEXTS[dep_check]="Checking and installing system dependencies..."
         TEXTS[dep_ok]="System dependencies are installed."
@@ -82,12 +81,10 @@ setup_texts() {
         TEXTS[req_installing]="Installing Python dependencies..."
         TEXTS[systemd_setup]="Setting up systemd service for bot auto-start..."
         TEXTS[systemd_done]="Bot service configured and started."
-        TEXTS[node_services_setup]="Setting up services for the Node and Tunnel..."
+        TEXTS[node_services_setup]="Setting up services for the Node and Tunnel using templates..."
         TEXTS[node_name_prompt]="Enter a unique name for your node (no spaces, e.g., MySuperNode): "
-        TEXTS[cloudflared_check]="Checking for cloudflared..."
-        TEXTS[cloudflared_missing]="'cloudflared' not found. Please install it and re-run the installer. \nInstructions: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/installation/"
-        TEXTS[node_service_created]="Service 'humanode-peer.service' created."
-        TEXTS[tunnel_service_created]="Service 'humanode-websocket-tunnel.service' created."
+        TEXTS[node_service_creating]="Creating 'humanode-peer.service'..."
+        TEXTS[tunnel_service_creating]="Creating 'humanode-websocket-tunnel.service'..."
         TEXTS[services_enabled]="Node and tunnel services have been enabled to start on boot."
         TEXTS[install_complete]="==================================\n  Installation Complete!  \n=================================="
         TEXTS[status_cmd]="To check the bot's status, run: sudo systemctl status humanode_bot"
@@ -201,7 +198,7 @@ setup_bot_systemd() {
         -e "s|{{GROUP}}|$owner_group|g" \
         -e "s|{{WORKING_DIRECTORY}}|$BOT_DIR|g" \
         -e "s|{{EXEC_START}}|$exec_start_path|g" \
-        "$INSTALL_DIR/systemd/humanode_bot.service.template" > "/etc/systemd/system/humanode_bot.service"
+        "$SYSTEMD_DIR/humanode_bot.service.template" > "/etc/systemd/system/humanode_bot.service"
 
     systemctl daemon-reload
     systemctl enable --now humanode_bot.service
@@ -211,54 +208,30 @@ setup_bot_systemd() {
 setup_node_services() {
     info "${TEXTS[node_services_setup]}"
     
-    # 1. Check for cloudflared
-    info "${TEXTS[cloudflared_check]}"
-    if ! command -v cloudflared &> /dev/null; then
-        error "${TEXTS[cloudflared_missing]}"
-    fi
-    success "cloudflared is installed."
-
-    # 2. Prompt for Node Name
+    # 1. Prompt for Node Name
     prompt_for_input "${TEXTS[node_name_prompt]}" NODE_NAME
 
-    # 3. Create humanode-peer.service
-    sudo tee /etc/systemd/system/humanode-peer.service > /dev/null <<EOF
-[Unit]
-Description=Humanode Peer
-After=network.target
+    # 2. Define paths
+    local humanode_home="/root/.humanode/workspaces/default"
+    local peer_binary_path="$humanode_home/humanode-peer"
+    local tunnel_binary_path="$humanode_home/humanode-websocket-tunnel"
+    local data_path="$humanode_home"
+    local chainspec_path="/root/chainspec.json"
 
-[Service]
-User=root
-Group=root
-Type=simple
-WorkingDirectory=/root/.humanode/workspaces/default/
-ExecStart=/root/.humanode/workspaces/default/humanode-peer --base-path /root/.humanode/workspaces/default/ --chain /root/chainspec.json --name '$NODE_NAME' --port 30333 --rpc-port 9933 --ws-port 9944 --rpc-methods unsafe --unsafe-rpc-external --unsafe-ws-external --validator
-Restart=always
-RestartSec=10
+    # 3. Create humanode-peer.service from template
+    info "${TEXTS[node_service_creating]}"
+    sed -e "s|__HUMANODE_HOME__|$humanode_home|g" \
+        -e "s|__HUMANODE_BINARY_PATH__|$peer_binary_path|g" \
+        -e "s|__HUMANODE_DATA_PATH__|$data_path|g" \
+        -e "s|__NODE_NAME__|$NODE_NAME|g" \
+        -e "s|__CHAINSPEC_PATH__|$chainspec_path|g" \
+        "$SYSTEMD_DIR/humanode-peer.service.template" > "/etc/systemd/system/humanode-peer.service"
 
-[Install]
-WantedBy=multi-user.target
-EOF
-    success "${TEXTS[node_service_created]}"
-
-    # 4. Create humanode-websocket-tunnel.service
-    sudo tee /etc/systemd/system/humanode-websocket-tunnel.service > /dev/null <<EOF
-[Unit]
-Description=Humanode Websocket Tunnel
-After=network.target
-
-[Service]
-User=root
-Group=root
-Type=simple
-ExecStart=/usr/local/bin/cloudflared tunnel --url ws://127.0.0.1:9944
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    success "${TEXTS[tunnel_service_created]}"
+    # 4. Create humanode-websocket-tunnel.service from template
+    info "${TEXTS[tunnel_service_creating]}"
+    sed -e "s|__HUMANODE_HOME__|$humanode_home|g" \
+        -e "s|__HUMANODE_TUNNEL_BINARY_PATH__|$tunnel_binary_path|g" \
+        "$SYSTEMD_DIR/humanode-websocket-tunnel.service.template" > "/etc/systemd/system/humanode-websocket-tunnel.service"
 
     # 5. Reload daemon and enable services
     systemctl daemon-reload
