@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Humanode Bot Universal Installer v3.1
-# An interactive script that automates the entire setup process.
+# Humanode Bot Universal Installer v3.2
+# An interactive script that automates the entire setup process,
+# including the creation of systemd services for the node and tunnel.
 
 # --- Stop on any error ---
 set -e
@@ -17,7 +18,7 @@ declare -A TEXTS
 setup_texts() {
     local lang=$1
     if [[ "$lang" == "ua" ]]; then
-        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.1 \n================================================="
+        TEXTS[welcome]="=================================================\n Вітаємо в інсталяторі Humanode Management Bot v3.2 \n================================================="
         TEXTS[root_needed]="Для коректної роботи інсталятора потрібні права адміністратора. Будь ласка, запустіть його через 'sudo'."
         TEXTS[dep_check]="Перевірка та встановлення системних залежностей..."
         TEXTS[dep_ok]="Системні залежності встановлено."
@@ -41,14 +42,21 @@ setup_texts() {
         TEXTS[config_done]="Файли конфігурації успішно створено."
         TEXTS[venv_creating]="Створюю віртуальне оточення Python..."
         TEXTS[req_installing]="Встановлюю залежності Python..."
-        TEXTS[systemd_setup]="Налаштовую службу systemd для автозапуску..."
-        TEXTS[systemd_done]="Службу systemd налаштовано та запущено."
+        TEXTS[systemd_setup]="Налаштовую службу systemd для автозапуску бота..."
+        TEXTS[systemd_done]="Службу бота налаштовано та запущено."
+        TEXTS[node_services_setup]="Налаштування сервісів для ноди та тунелю..."
+        TEXTS[node_name_prompt]="Введіть унікальне ім'я для вашої ноди (без пробілів, напр., MySuperNode): "
+        TEXTS[cloudflared_check]="Перевірка наявності cloudflared..."
+        TEXTS[cloudflared_missing]="'cloudflared' не знайдено. Будь ласка, встановіть його та запустіть інсталятор знову. \nІнструкції: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/installation/"
+        TEXTS[node_service_created]="Сервіс 'humanode-peer.service' створено."
+        TEXTS[tunnel_service_created]="Сервіс 'humanode-websocket-tunnel.service' створено."
+        TEXTS[services_enabled]="Сервіси ноди та тунелю увімкнено для автозапуску."
         TEXTS[install_complete]="=================================\n  Встановлення завершено!  \n================================="
         TEXTS[status_cmd]="Щоб перевірити статус бота, виконайте: sudo systemctl status humanode_bot"
         TEXTS[logs_cmd]="Щоб переглянути логи, виконайте: sudo journalctl -u humanode_bot -f"
-        TEXTS[start_convo]="Знайдіть вашого бота в Telegram і надішліть команду /start."
+        TEXTS[start_convo]="Знайдіть вашого бота в Telegram і надішліть команду /start, щоб почати керувати вашими нодами."
     else # English
-        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.1 \n=============================================="
+        TEXTS[welcome]="==============================================\n Welcome to the Humanode Management Bot Installer v3.2 \n=============================================="
         TEXTS[root_needed]="This installer requires root privileges to run correctly. Please execute it with 'sudo'."
         TEXTS[dep_check]="Checking and installing system dependencies..."
         TEXTS[dep_ok]="System dependencies are installed."
@@ -72,12 +80,19 @@ setup_texts() {
         TEXTS[config_done]="Configuration files created successfully."
         TEXTS[venv_creating]="Creating Python virtual environment..."
         TEXTS[req_installing]="Installing Python dependencies..."
-        TEXTS[systemd_setup]="Setting up systemd service for auto-start..."
-        TEXTS[systemd_done]="Systemd service configured and started."
+        TEXTS[systemd_setup]="Setting up systemd service for bot auto-start..."
+        TEXTS[systemd_done]="Bot service configured and started."
+        TEXTS[node_services_setup]="Setting up services for the Node and Tunnel..."
+        TEXTS[node_name_prompt]="Enter a unique name for your node (no spaces, e.g., MySuperNode): "
+        TEXTS[cloudflared_check]="Checking for cloudflared..."
+        TEXTS[cloudflared_missing]="'cloudflared' not found. Please install it and re-run the installer. \nInstructions: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/installation/"
+        TEXTS[node_service_created]="Service 'humanode-peer.service' created."
+        TEXTS[tunnel_service_created]="Service 'humanode-websocket-tunnel.service' created."
+        TEXTS[services_enabled]="Node and tunnel services have been enabled to start on boot."
         TEXTS[install_complete]="==================================\n  Installation Complete!  \n=================================="
         TEXTS[status_cmd]="To check the bot's status, run: sudo systemctl status humanode_bot"
         TEXTS[logs_cmd]="To view the logs, run: sudo journalctl -u humanode_bot -f"
-        TEXTS[start_convo]="Find your bot on Telegram and send the /start command."
+        TEXTS[start_convo]="Find your bot on Telegram and send the /start command to begin managing your nodes."
     fi
 }
 
@@ -88,15 +103,11 @@ error() { echo -e "\033[0;31mERROR:\033[0m $1" >&2; exit 1; }
 prompt_for_input() {
     local prompt_text="$1"
     local var_name="$2"
-    local is_secret="${3:-false}"
+    local allow_empty="${3:-false}"
     local input_value
     while true; do
-        if [ "$is_secret" = true ]; then
-            read -sp "$prompt_text" input_value; echo
-        else
-            read -p "$prompt_text" input_value
-        fi
-        if [ -n "$input_value" ]; then
+        read -p "$prompt_text" input_value
+        if [ -n "$input_value" ] || [ "$allow_empty" = true ]; then
             eval "$var_name=\"$input_value\""; break
         else
             info "${TEXTS[input_empty_error]}"; fi
@@ -107,7 +118,6 @@ prompt_for_input() {
 pre_flight_checks() {
     if [[ "$EUID" -ne 0 ]]; then error "${TEXTS[root_needed]}"; fi
     info "${TEXTS[dep_check]}"
-    # Added jq to the list of dependencies
     apt-get update -y > /dev/null
     apt-get install -y git python3 python3-venv curl tesseract-ocr wget jq > /dev/null
     success "${TEXTS[dep_ok]}"
@@ -136,9 +146,9 @@ setup_repo() {
 interactive_configuration() {
     info "${TEXTS[config_start]}"
     
-    prompt_for_input "${TEXTS[token_prompt]}" token true
+    prompt_for_input "${TEXTS[token_prompt]}" token
     prompt_for_input "${TEXTS[user_id_prompt]}" user_id
-    read -p "${TEXTS[github_token_prompt]}" github_token
+    prompt_for_input "${TEXTS[github_token_prompt]}" github_token true
 
     jq -n \
       --arg token "$token" \
@@ -180,7 +190,7 @@ setup_environment() {
     "$VENV_DIR/bin/pip" install -r "$INSTALL_DIR/requirements.txt" > /dev/null
 }
 
-setup_systemd() {
+setup_bot_systemd() {
     info "${TEXTS[systemd_setup]}"
     local owner_user="${SUDO_USER:-$(whoami)}"
     local owner_group=$(id -gn "$owner_user")
@@ -198,6 +208,66 @@ setup_systemd() {
     success "${TEXTS[systemd_done]}"
 }
 
+setup_node_services() {
+    info "${TEXTS[node_services_setup]}"
+    
+    # 1. Check for cloudflared
+    info "${TEXTS[cloudflared_check]}"
+    if ! command -v cloudflared &> /dev/null; then
+        error "${TEXTS[cloudflared_missing]}"
+    fi
+    success "cloudflared is installed."
+
+    # 2. Prompt for Node Name
+    prompt_for_input "${TEXTS[node_name_prompt]}" NODE_NAME
+
+    # 3. Create humanode-peer.service
+    sudo tee /etc/systemd/system/humanode-peer.service > /dev/null <<EOF
+[Unit]
+Description=Humanode Peer
+After=network.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+WorkingDirectory=/root/.humanode/workspaces/default/
+ExecStart=/root/.humanode/workspaces/default/humanode-peer --base-path /root/.humanode/workspaces/default/ --chain /root/chainspec.json --name '$NODE_NAME' --port 30333 --rpc-port 9933 --ws-port 9944 --rpc-methods unsafe --unsafe-rpc-external --unsafe-ws-external --validator
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    success "${TEXTS[node_service_created]}"
+
+    # 4. Create humanode-websocket-tunnel.service
+    sudo tee /etc/systemd/system/humanode-websocket-tunnel.service > /dev/null <<EOF
+[Unit]
+Description=Humanode Websocket Tunnel
+After=network.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --url ws://127.0.0.1:9944
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    success "${TEXTS[tunnel_service_created]}"
+
+    # 5. Reload daemon and enable services
+    systemctl daemon-reload
+    systemctl enable humanode-peer.service
+    systemctl enable humanode-websocket-tunnel.service
+    success "${TEXTS[services_enabled]}"
+}
+
+
 # --- Main Execution ---
 main() {
     read -p "Виберіть мову / Select language (ua/en) [en]: " lang; lang=${lang:-en}
@@ -208,7 +278,8 @@ main() {
     setup_repo
     interactive_configuration
     setup_environment
-    setup_systemd
+    setup_bot_systemd
+    setup_node_services
 
     echo -e "\n\033[1;32m${TEXTS[install_complete]}\033[0m\n"
     info "${TEXTS[status_cmd]}"

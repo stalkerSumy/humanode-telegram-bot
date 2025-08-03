@@ -543,6 +543,7 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
 
 async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
     global IS_CHECK_RUNNING
+    logger.info("!!!!!!!! ENTERING periodic_bioauth_check !!!!!!!!")
     if IS_CHECK_RUNNING:
         logger.info("Skipping periodic check: a previous check is still in progress.")
         return
@@ -555,11 +556,13 @@ async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
         settings = state["notification_settings"]
         lang = state.get("user_settings", {}).get(str(AUTHORIZED_USER_ID), {}).get("language", "uk")
 
+        logger.info("Attempting to create Selenium driver...")
         driver = create_selenium_driver()
         if not driver:
             logger.error("Failed to create Selenium driver for periodic check. Skipping this run.")
             IS_CHECK_RUNNING = False # Make sure to reset the lock
             return
+        logger.info("!!!!!!!! Selenium driver created successfully !!!!!!!!")
 
         try:
             for server_id, server_config in SERVERS.items():
