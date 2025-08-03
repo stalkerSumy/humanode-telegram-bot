@@ -38,8 +38,26 @@ import io
 
 # --- Constants ---
 BOT_VERSION = "1.3.5" # Incremented version
-TOKEN = "DUMMY_TOKEN"
-AUTHORIZED_USER_ID = DUMMY_USER_ID
+
+def get_config_from_file():
+    try:
+        # Assuming config.json is in the parent directory of the bot script.
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(script_dir, '..', 'config.json')
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.critical(f"CRITICAL: Could not load or parse config.json from {config_path}: {e}")
+        return {}
+
+config = get_config_from_file()
+TOKEN = config.get("telegram_token")
+AUTHORIZED_USER_ID = int(config.get("authorized_user_id")) if config.get("authorized_user_id") else None
+
+if not TOKEN or not AUTHORIZED_USER_ID:
+    logger.critical("CRITICAL: telegram_token and authorized_user_id must be set in config.json")
+    exit(1) # Exit if config is missing
+
 STATE_FILE = "/root/bot_state.json"
 LOG_FILE = "humanode_bot.log"
 FULL_CHECK_INTERVAL_HOURS = 168
@@ -780,13 +798,7 @@ async def get_node_version_action(update, context, lang, server_id):
     text = get_text("msg_node_version", lang, version=stdout.strip()) if returncode == 0 and stdout.strip() else get_text("msg_failed_to_get_version", lang, error=stderr)
     await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
-def get_config():
-    try:
-        with open('/root/config.json', 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.warning("config.json not found or invalid. Proceeding without auth token.")
-        return {}
+# This function is replaced by get_config_from_file() at the top of the script.
 
 async def update_node_action(update, context, lang, server_id):
     server_config = SERVERS[server_id]
