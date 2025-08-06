@@ -37,16 +37,14 @@ from PIL import Image
 import io
 
 # --- Constants ---
-BOT_VERSION = "1.3.5" # Incremented version
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-STATE_FILE = os.path.join(BASE_DIR, "bot_state.json")
-SERVERS_CONFIG_FILE = os.path.join(BASE_DIR, "servers.json")
-LOG_FILE = os.path.join(BASE_DIR, "humanode_bot.log")
-LOCALES_DIR = os.path.join(BASE_DIR, "locales")
-GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
+BOT_VERSION = "1.3.7" # Incremented version
+STATE_FILE = "/root/bot_state.json"
+LOG_FILE = "humanode_bot.log"
 FULL_CHECK_INTERVAL_HOURS = 168
 JOB_QUEUE_INTERVAL_MINUTES = 5
+LOCALES_DIR = "locales"
+GITHUB_SNAPSHOT_URL = "https://api.github.com/repos/stalkerSumy/humanode-telegram-bot/releases/tags/Snap"
+SERVERS_CONFIG_FILE = "/root/servers.json"
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -63,17 +61,17 @@ logger = logging.getLogger(__name__)
 
 # --- Config Loading ---
 def load_config():
-    """Loads config from config.json."""
+    """Loads config from /root/config.json."""
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        with open('/root/config.json', 'r') as f:
             config = json.load(f)
             logger.info("Successfully loaded config.json.")
             return config
     except FileNotFoundError:
-        logger.critical(f"CRITICAL: {CONFIG_FILE} not found. Please create it using the installer.")
+        logger.critical("CRITICAL: /root/config.json not found. Please create it.")
         return {}
     except json.JSONDecodeError:
-        logger.critical(f"CRITICAL: Could not decode {CONFIG_FILE}. Please check its format.")
+        logger.critical("CRITICAL: Could not decode /root/config.json. Please check its format.")
         return {}
     except Exception as e:
         logger.critical(f"CRITICAL: An unexpected error occurred while loading config.json: {e}")
@@ -84,10 +82,9 @@ TOKEN = config.get("telegram_bot_token")
 AUTHORIZED_USER_ID = config.get("authorized_user_id")
 if isinstance(AUTHORIZED_USER_ID, str) and AUTHORIZED_USER_ID.isdigit():
     AUTHORIZED_USER_ID = int(AUTHORIZED_USER_ID)
-GITHUB_TOKEN = config.get("github_token")
 
 if not TOKEN or not AUTHORIZED_USER_ID:
-    logger.critical("CRITICAL: telegram_token and authorized_user_id must be set in config.json. Exiting.")
+    logger.critical("CRITICAL: telegram_bot_token and authorized_user_id must be set in /root/config.json. Exiting.")
     exit(1)
 
 # --- Global Lock ---
@@ -370,7 +367,7 @@ def parse_percentage_to_minutes(percentage_str: str, total_epoch_minutes: int = 
 # --- Core Bot Logic ---
 async def execute_command(server_config: dict, command: str) -> tuple[int, str, str]:
     if not server_config.get("is_local", False):
-        shell_command = f"ssh -i {server_config['key_path']} -o StrictHostKeyChecking=no -o ConnectTimeout=10 {server_config['user']}@{server_config['ip']} \"{command}\""
+        shell_command = f"ssh -i {server_config['key_path']} -t -o StrictHostKeyChecking=no -o ConnectTimeout=10 {server_config['user']}@{server_config['ip']} \"{command}\""
     else:
         shell_command = command
     
@@ -543,7 +540,6 @@ def get_bioauth_and_epoch_times(driver: webdriver.Chrome, url: str) -> tuple[int
 
 async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
     global IS_CHECK_RUNNING
-    logger.info("!!!!!!!! ENTERING periodic_bioauth_check !!!!!!!!")
     if IS_CHECK_RUNNING:
         logger.info("Skipping periodic check: a previous check is still in progress.")
         return
@@ -556,13 +552,11 @@ async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
         settings = state["notification_settings"]
         lang = state.get("user_settings", {}).get(str(AUTHORIZED_USER_ID), {}).get("language", "uk")
 
-        logger.info("Attempting to create Selenium driver...")
         driver = create_selenium_driver()
         if not driver:
             logger.error("Failed to create Selenium driver for periodic check. Skipping this run.")
             IS_CHECK_RUNNING = False # Make sure to reset the lock
             return
-        logger.info("!!!!!!!! Selenium driver created successfully !!!!!!!!")
 
         try:
             for server_id, server_config in SERVERS.items():
@@ -571,7 +565,7 @@ async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
 
                 last_check_str = server_state.get("last_full_check_utc")
                 deadline_str = server_state.get("bioauth_deadline_utc")
-
+                
                 # Perform a full check if it's time, or if the last known deadline has already passed.
                 perform_full_check = (
                     not last_check_str or
@@ -607,6 +601,9 @@ async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.send_message(AUTHORIZED_USER_ID, get_text("msg_info_data_retrieval_restored", lang, server_name=server_config['name']), parse_mode=ParseMode.HTML)
 
                     if not data_retrieved_successfully:
+                        # CRITICAL FIX: Clear the stale deadline to prevent false overdue alerts.
+                        server_state["bioauth_deadline_utc"] = None
+                        
                         if not server_state.get("is_in_failure_alert_mode"):
                             server_state["is_in_failure_alert_mode"] = True
                             server_state["last_failure_alert_utc"] = now_utc.isoformat()
@@ -819,7 +816,13 @@ async def get_node_version_action(update, context, lang, server_id):
     text = get_text("msg_node_version", lang, version=stdout.strip()) if returncode == 0 and stdout.strip() else get_text("msg_failed_to_get_version", lang, error=stderr)
     await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML)
 
-# This function is replaced by get_config_from_file() at the top of the script.
+def get_config():
+    try:
+        with open('/root/config.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.warning("config.json not found or invalid. Proceeding without auth token.")
+        return {}
 
 async def update_node_action(update, context, lang, server_id):
     server_config = SERVERS[server_id]
@@ -1344,5 +1347,3 @@ if __name__ == "__main__":
         logger.info("Bot stopped by user.")
     except Exception as e:
         logger.error(f"Bot crashed with an unhandled exception: {e}", exc_info=True)
-    finally:
-        logger.info("!!!!!!!! SCRIPT IS EXITING !!!!!!!!")
