@@ -570,7 +570,14 @@ async def periodic_bioauth_check(context: ContextTypes.DEFAULT_TYPE):
                 data_retrieved_successfully = False
 
                 last_check_str = server_state.get("last_full_check_utc")
-                perform_full_check = not last_check_str or (now_utc - datetime.fromisoformat(last_check_str) > timedelta(hours=FULL_CHECK_INTERVAL_HOURS))
+                deadline_str = server_state.get("bioauth_deadline_utc")
+
+                # Perform a full check if it's time, or if the last known deadline has already passed.
+                perform_full_check = (
+                    not last_check_str or
+                    (now_utc - datetime.fromisoformat(last_check_str) > timedelta(hours=FULL_CHECK_INTERVAL_HOURS)) or
+                    (deadline_str and datetime.fromisoformat(deadline_str) < now_utc)
+                )
 
                 if perform_full_check:
                     logger.info(f"Performing full bioauth check for {server_config['name']}.")
