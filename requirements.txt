@@ -4,3 +4,4 @@ webdriver-manager
 requests
 pytesseract
 Pillow
+beautifulsoup4
